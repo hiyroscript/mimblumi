@@ -1,0 +1,43 @@
+Refactor the Terra repo (github.com/hiyroscript/Terra) from its single index.html into a small set of files. This is a pure restructure: the game must look and behave EXACTLY the same. Do not change any values, colours, formulas, controls or behaviour, and do not "improve" or tidy any logic.
+
+## Current state
+- One file, index.html (~1,100 lines). It is a three.js r128 world loaded from the cdnjs CDN as the global THREE, with all game code in one inline <script> wrapped in a 'use strict' IIFE.
+- The code is already split into 11 numbered sections by banner comments: 1 Config+Math, 2 World Fields, 3 Geometry Builder, 4 Assets, 5 Renderer/Scene/Light, 6 Instance Pools, 7 Chunk Generation, 8 Chunk Manager, 9 Player, 10 Camera Rig, 11 Input, followed by the main loop/boot code.
+- The file starts with an artifact page shell: a first <style> block with :root/body resets and safe-area padding, then a <title> inside <body>.
+
+## Target layout
+- index.html: a proper <!doctype html> with <head> holding the meta charset/viewport, <title>Infinite 3D World</title> and a stylesheet link. Keep the #stage div and the #fail note. Load three r128 from the same CDN URL as a classic <script>, then <script type="module" src="js/main.js">.
+- style.css: both existing <style> blocks, merged in their original order so the cascade is identical. Keep every rule, including the shell's resets and safe-area padding.
+- js/ with one ES module per concern, following the existing sections:
+  - math.js (CFG, CH, TAU, clamp, lerp, sm, damp, mulberry32, hashInt, hash01, makeNoise, and the colour helpers rgb/mul/mixc)
+  - fields.js (N2, PAL, Fields)
+  - geometry.js (FACES, scratch vectors, GeoB)
+  - assets.js (LEAF, BARK, STONE, FLOWERS, and all make* functions)
+  - renderer.js (section 5)
+  - pools.js (section 6)
+  - chunks.js (sections 7 and 8)
+  - player.js
+  - camera.js
+  - input.js
+  - main.js (boot, the WebGL/THREE guard, the main loop)
+  Merge or split modules differently only if a circular import would otherwise be unavoidable, and say why if you do.
+
+## Rules for exactness
+1. Move code verbatim. Only add import/export lines and the minimum glue those require. No renaming, no reformatting, no reordering of statements within a section.
+2. Keep `const T = THREE;` usage. Each module that needs it reads the global (e.g. `const T = window.THREE;`). Do not switch to an npm or ESM build of three, and do not change the version.
+3. Preserve execution order. Top-level code with side effects (creating the renderer, scene, lights, pools, shadow setup, event listeners, and any RNG or noise calls) must run in the same order as in the original file. The world is seeded, so any change in the order RNG functions are called changes the world. Check this carefully, and make module evaluation order match the original top-to-bottom order.
+4. Keep shared mutable state shared. Where sections reassign module-level variables (e.g. let bindings changed elsewhere), export an object or setter rather than a copied value, so every module sees the same live state.
+5. The original does `if (!window.THREE) { failNote.hidden = false; return; }` before anything else runs. Reproduce that exactly. Because imports evaluate first, have main.js check the global and show #fail before importing the rest, e.g. via dynamic `import()` after the check, so no module touches THREE when it is missing.
+6. Modules are strict by default, so drop the IIFE and 'use strict' wrapper without changing any behaviour.
+7. Use relative paths only (./js/..., ./style.css) so the site works under GitHub Pages at /Terra/.
+
+## Verification (required)
+- Serve the folder over HTTP (e.g. `python3 -m http.server`) and load both the original and the refactored page in a headless browser (Playwright or Puppeteer with WebGL/SwiftShader if available).
+- Confirm there are no console errors in the refactored version.
+- With the same seed and no input, take screenshots of both after the world settles and compare them pixel by pixel. Freeze or stub time so animation and wind don't cause false differences (e.g. control performance.now and requestAnimationFrame). Also compare after simulating the same scripted input (e.g. hold W for 2 seconds, then scroll to zoom).
+- If no headless browser is available, at least do a structural check: concatenate the module bodies in import order, strip the import/export lines, and diff the result against the original script to show only glue changed.
+- Report what you verified and how.
+
+## Also
+- Add a short README.md: what Terra is, controls (drag to walk, further is faster; pinch or scroll to zoom; WASD/arrows, Shift to run), how to run it locally (it needs a local server now, because opening index.html straight from disk won't load modules), and how to enable GitHub Pages.
+- Commit with a clear message. Do not change anything else in the repo.
