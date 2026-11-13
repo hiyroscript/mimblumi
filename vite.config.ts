@@ -1,9 +1,9 @@
 import { defineConfig } from 'vite';
 
-// GitHub Pages serves this project from https://hiyroscript.github.io/mavooli/,
-// so every asset URL has to start with /mavooli/.
+// GitHub Pages serves this project from https://hiyroscript.github.io/moo/,
+// so every asset URL has to start with /moo/.
 export default defineConfig({
-  base: '/mavooli/',
+  base: '/moo/',
   build: {
     outDir: 'dist',
     // Ship the stylesheet exactly as written (it is ~1.5 kB). The minifier reorders

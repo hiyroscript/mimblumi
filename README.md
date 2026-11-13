@@ -3,7 +3,7 @@
 An infinite, procedurally generated low-poly 3D world, built with [three.js](https://threejs.org/) r128,
 TypeScript and [Vite](https://vite.dev/).
 
-Live at **https://hiyroscript.github.io/mavooli/**
+Live at **https://hiyroscript.github.io/moo/**
 
 > **TODO — new artwork.** The game has been renamed Mavooli. `mavooli.png` (the logo the intro shows),
 > `favicon.ico` and `apple-touch-icon.png` are still the logo from before the rename, kept as placeholders.
@@ -56,7 +56,7 @@ You need Node.js 20.19+ or 22.12+.
 
 ```sh
 npm install
-npm run dev        # dev server with hot reload, at http://localhost:5173/mavooli/
+npm run dev        # dev server with hot reload, at http://localhost:5173/moo/
 ```
 
 Other scripts:
@@ -64,7 +64,7 @@ Other scripts:
 | Command             | What it does                                                    |
 | ------------------- | --------------------------------------------------------------- |
 | `npm run build`     | Type-checks (`tsc --noEmit`), then bundles the site into `dist/` |
-| `npm run preview`   | Serves the built `dist/` at http://localhost:4173/mavooli/      |
+| `npm run preview`   | Serves the built `dist/` at http://localhost:4173/moo/          |
 | `npm run typecheck` | Type-checks only                                                |
 
 ## Deploying
@@ -78,10 +78,9 @@ site and publishes `dist/` to GitHub Pages. You can also run it by hand from the
 > `index.html` from the repository root, which is now only the Vite entry point and loads TypeScript
 > that browsers cannot run.
 
-The site is built for the `/mavooli/` sub-path (`base` in [`vite.config.ts`](vite.config.ts)), so the GitHub
-repository (and with it the Pages path) has to be renamed to **mavooli** to match. Until it is, the site
-served from the old path cannot find its scripts and styles. If the site moves to a custom domain or a
-`<user>.github.io` repository instead, change `base` to match.
+The game is called Mavooli, but the repository is **moo**, so GitHub Pages serves it from `/moo/` and the
+site is built for that sub-path (`base` in [`vite.config.ts`](vite.config.ts)). If the repository is
+renamed, or the site moves to a custom domain or a `<user>.github.io` repository, change `base` to match.
 
 ## How the code is organised
 
