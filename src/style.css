@@ -205,7 +205,10 @@ html.intro, html.intro body { background: #000; }
 @supports (width: 1cqw) {
   #home { --card-w: min(184px, calc((100cqw - 2 * var(--gap)) / 3.4), calc((100cqh - 64px) / 1.56)); }
 }
-#home > * { grid-area: 1 / 1; }
+/* The cards and the toast share the one grid cell. The veil must not be placed in it: an absolutely
+   positioned grid item with a grid area is sized to that area, inside the safe-area padding, so the white
+   would stop short of the notch and the edges. Unplaced, it covers the whole screen. */
+.home-cards, .home-toast { grid-area: 1 / 1; }
 
 .home-cards {
   display: flex; align-items: center; justify-content: center;
