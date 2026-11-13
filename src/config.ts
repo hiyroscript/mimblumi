@@ -15,21 +15,36 @@ export const CFG = {
     /* Copied from Alva's CONFIG.splash, so both games open the same way. */
     fadeIn: 900, hold: 1600, fadeOut: 800,
     zoomFrom: 0.96, zoomTo: 1.04,
-    betweenImages: 220, finalBlackHold: 200, reducedMotionHold: 1000,
+    betweenImages: 220, reducedMotionHold: 1000,
 
-    /* Mimblumi's own steps. */
+    /* Mavooli's own steps. */
     imageTimeout: 10000,   // logos that have not loaded and decoded by then are skipped
     barFadeIn: 350,        // the loading bar fades in under the logo...
     barMinShow: 300,       // ...and stays at least this long, so it never just flickers
     crossfade: 400,        // loading bar -> "Press to start"
     pulse: 1400,           // one "Press to start" pulse, 1 -> 0.25 -> 1
-    pressFadeOut: 400,     // logo and prompt fade out after the press
-    /* The background after the press, each colour cross-fading into the next. The green and brown are the
-       world's own oak leaf (LEAF.oak[1]) and earth (PAL.earth). */
-    transitionColors: ['#000000', '#0399FF', '#5F8F43', '#7D5F42', '#FFFFFF'],
-    transitionMs: 2700,
-    reducedTransitionMs: 600,  // reduced motion: one black -> white cross-fade instead
-    revealMs: 900              // the white fades away to show the running game
+    /* After the press: white fades in over the logo, holds while the Home Screen is set up under it,
+       then fades out to show the Home Screen. */
+    whiteFadeIn: 600,
+    whiteHold: 150,
+    whiteFadeOut: 700,
+    reducedWhiteFade: 250  // reduced motion: both fades this long, and no hold
+  },
+
+  /* The Home Screen (src/home/). Times are in milliseconds, distances in world units. */
+  home: {
+    scrollSpeed: 2.4,      // how fast the camera drifts over the world (units per second; walking is 2.8)
+    cameraZoom: 30,        // camera distance, like CFG.zoom (further out than the game's 21, to show more of the world)
+    direction: 0.45,       // drift heading in radians from straight up the screen (away from the viewer); + turns right
+    swayYaw: 0.07,         // the camera's slow side-to-side turn, in radians either way...
+    swayPeriod: 38,        // ...over this many seconds
+    cardFallMs: 650,       // each card's fall from above the top of the screen
+    cardStagger: 70,       // between one card's fall and the next (left, middle, right)
+    cardStartAt: 0.45,     // the fall starts when the white has faded this far (0..1)
+    leaveMs: 380,          // a picked mode: the cards rise and fade away...
+    whiteFadeIn: 450,      // ...while white fades in over the Home Screen; the game is set up under it...
+    whiteFadeOut: 800,     // ...and the white fades away to show the game
+    reducedFade: 250       // reduced motion: every Home Screen fade is this long and nothing moves
   }
 };
 export const CH = CFG.chunk;

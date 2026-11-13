@@ -1,16 +1,16 @@
 import hsUrl from '../../hs.jpg';
-import logoUrl from '../../mimblumi.png';
+import logoUrl from '../../mavooli.png';
 import { CFG } from '../config';
 import { Run } from './run';
 
 /* ============================================================
-   INTRO — hiyroscript logo, Mimblumi logo, loading bar, "Press to start", colour transition
+   INTRO — hiyroscript logo, Mavooli logo, loading bar, "Press to start", white into the Home Screen
    ============================================================
    The two logos play exactly like Alva's splash (js/screens/splash-screen.js): one opacity track
    (fade in, hold, fade out) plus a slow linear zoom over the whole of it, with a short black gap
-   between them. Then Mimblumi's own steps: the game logo stays as the title, a loading bar under
-   it follows the real start-up work, "Press to start" takes its place, and the press runs the
-   background through the colours in CFG.splash.transitionColors before white fades into the game.
+   between them. Then Mavooli's own steps: the game logo stays as the title, a loading bar under
+   it follows the real start-up work, "Press to start" takes its place, and the press fades the
+   screen to white, sets up the Home Screen under the white, and fades the white away to show it.
 */
 
 const S = CFG.splash;
@@ -20,11 +20,16 @@ export interface IntroHooks {
   loading: Promise<void>;
   /** How far the start-up work has got, 0..1. */
   progress(): number;
-  /** Start the game loop. Called under the white overlay, just before it fades away. */
-  startGame(): void;
+  /**
+   * Mount the Home Screen (cards still hidden) and start its world drifting. Called under the white,
+   * before it fades away. Must not throw: if the Home Screen cannot open, it starts the game instead.
+   */
+  showHome(): void;
+  /** Let the Home Screen's cards fall in. Called while the white is fading away. */
+  revealHome(): void;
   /** The world cannot be drawn: show the fallback note. The splash is already gone. */
   fail(err: unknown): void;
-  /** The intro is over and the splash is gone: hand the screen to the game. */
+  /** The intro is over and the splash is gone. */
   done(): void;
 }
 
@@ -79,7 +84,7 @@ const ZOOM: Keyframe[] = [{ transform: `scale(${S.zoomFrom})` }, { transform: `s
 
 /**
  * Steps 0–2. Waits for both logos to load and decode, then plays the hiyroscript logo with its credit,
- * a black gap, and the Mimblumi logo, which fades in and stays. Returns the Mimblumi logo, or null when
+ * a black gap, and the Mavooli logo, which fades in and stays. Returns the Mavooli logo, or null when
  * the logos had to be skipped (nothing of them is left on screen then).
  */
 async function playLogos(root: HTMLElement, run: Run, reduced: boolean): Promise<HTMLImageElement | null> {
@@ -89,7 +94,7 @@ async function playLogos(root: HTMLElement, run: Run, reduced: boolean): Promise
       throw new Error('The logos did not load within ' + S.imageTimeout + ' ms');
     });
     const [hs, logo] = await Promise.race([
-      Promise.all([loadImage(hsUrl, 'hiyroscript'), loadImage(logoUrl, 'Mimblumi')]),
+      Promise.all([loadImage(hsUrl, 'hiyroscript'), loadImage(logoUrl, 'Mavooli')]),
       timeout
     ]);
 
@@ -119,7 +124,7 @@ async function playLogos(root: HTMLElement, run: Run, reduced: boolean): Promise
     await run.ended(gameFade);
     return logo;
   } catch (err) {
-    console.error('[Mimblumi] Splash unavailable; skipping the logos.', err);
+    console.error('[Mavooli] Splash unavailable; skipping the logos.', err);
     for (const e of added) e.remove();
     root.classList.add('no-logo');       // the loading bar and "Press to start" sit in the middle instead
     return null;
@@ -213,34 +218,44 @@ async function playPrompt(root: HTMLElement, run: Run, reduced: boolean, bar: HT
 }
 
 /**
- * Step 5. Fades the logo and prompt out, holds black for a moment, runs the background through the
- * transition colours, starts the game under the white, and fades the white away.
+ * Step 5. Stops the pulse where it is, fades solid white in over the logo and prompt, holds it while the
+ * Home Screen is set up underneath, then fades the white away to show the Home Screen. Its cards start
+ * falling in when the white is CFG.home.cardStartAt of the way gone.
  */
-async function playTransition(root: HTMLElement, run: Run, reduced: boolean, logo: HTMLElement | null,
-                              prompt: HTMLElement, pulse: Animation | null, startGame: () => void): Promise<void> {
-  const out: KeyframeAnimationOptions = { duration: S.pressFadeOut, easing: 'ease-in-out', fill: 'forwards' };
-  const from = parseFloat(getComputedStyle(prompt).opacity);    // wherever the pulse was
-  if (pulse) pulse.cancel();
-  const fades = [run.animate(prompt, [{ opacity: isFinite(from) ? from : 1 }, { opacity: 0 }], out)];
-  if (logo) fades.push(run.animate(logo, [{ opacity: 1 }, { opacity: 0 }], out));
-  await Promise.all(fades.map(a => run.ended(a)));
-  await run.wait(S.finalBlackHold);
+async function playTransition(root: HTMLElement, run: Run, reduced: boolean, pulse: Animation | null,
+                              showHome: () => void, revealHome: () => void): Promise<void> {
+  if (pulse) pulse.pause();               // the prompt stays at whatever opacity the pulse had reached
+  root.removeAttribute('role');            // the press is spent: the splash is no longer a button
+  root.removeAttribute('aria-label');
+  root.removeAttribute('tabindex');
 
-  /* One animation through every colour; each step eases in and out, so each colour cross-fades into the next. */
-  const all = S.transitionColors;
-  const colors = reduced ? [all[0], all[all.length - 1]] : all;
-  const keys: Keyframe[] = colors.map((c, i) => i < colors.length - 1 ? { backgroundColor: c, easing: 'ease-in-out' } : { backgroundColor: c });
-  await run.ended(run.animate(root, keys, { duration: reduced ? S.reducedTransitionMs : S.transitionMs, fill: 'forwards' }));
+  const ease: KeyframeAnimationOptions = { easing: 'ease-in-out', fill: 'forwards' };
+  const white = make('div', 'splash-white');
+  root.append(white);
+  await run.ended(run.animate(white, [{ opacity: 0 }, { opacity: 1 }], { ...ease, duration: reduced ? S.reducedWhiteFade : S.whiteFadeIn }));
 
-  /* On white: start the world underneath, let its first frame land, then fade the white away. */
-  startGame();
+  /* Solid white: clear the intro away, set up the Home Screen underneath, and let its first frame land. */
+  for (const el of Array.from(root.children)) if (el !== white) el.remove();
+  root.classList.add('is-clear');          // no black behind the white any more
+  document.documentElement.classList.remove('intro');
+  const hold = run.wait(reduced ? 0 : S.whiteHold);
+  showHome();
   await run.frames2();
-  await run.ended(run.animate(root, [{ opacity: 1 }, { opacity: 0 }], { duration: S.revealMs, easing: 'ease-in-out', fill: 'forwards' }));
+  await hold;
+
+  /* Fade the white away. The Home Screen's cards can be pressed from now on. */
+  root.style.pointerEvents = 'none';
+  const outMs = reduced ? S.reducedWhiteFade : S.whiteFadeOut;
+  const out = run.animate(white, [{ opacity: 1 }, { opacity: 0 }], { ...ease, duration: outMs });
+  await run.wait(outMs * CFG.home.cardStartAt);
+  revealHome();
+  await run.ended(out);
 }
 
 /**
  * Play the whole intro on `root` (the #splash overlay) while the start-up work runs. Never throws and
- * never leaves the page on a black screen: whatever goes wrong, it ends in the game or in the fallback note.
+ * never leaves the page on a black or white screen: whatever goes wrong, it ends on the Home Screen
+ * (or in the game, if the Home Screen cannot open) or in the fallback note.
  */
 export async function playIntro(root: HTMLElement, hooks: IntroHooks): Promise<void> {
   const run = new Run();
@@ -248,8 +263,9 @@ export async function playIntro(root: HTMLElement, hooks: IntroHooks): Promise<v
   const state: LoadState = { loaded: false, failed: false };
   hooks.loading.then(() => { state.loaded = true; }, () => { state.failed = true; });
 
-  let started = false;
-  const startGame = (): void => { if (!started) { started = true; hooks.startGame(); } };
+  let shown = false, revealed = false;
+  const showHome = (): void => { if (!shown) { shown = true; hooks.showHome(); } };
+  const revealHome = (): void => { if (!revealed) { revealed = true; hooks.revealHome(); } };
   const teardown = (): void => {
     root.remove();
     run.clear();
@@ -257,12 +273,12 @@ export async function playIntro(root: HTMLElement, hooks: IntroHooks): Promise<v
   };
 
   try {
-    const logo = await playLogos(root, run, reduced);
+    await playLogos(root, run, reduced);
     const { bar, prompt } = await playLoading(root, run, state, hooks.progress);
     const pulse = await playPrompt(root, run, reduced, bar, prompt);
-    await playTransition(root, run, reduced, logo, prompt, pulse, startGame);
+    await playTransition(root, run, reduced, pulse, showHome, revealHome);
   } catch (err) {
-    if (!(err instanceof LoadFailed)) console.error('[Mimblumi] The intro failed; going straight to the game.', err);
+    if (!(err instanceof LoadFailed)) console.error('[Mavooli] The intro failed; going straight to the Home Screen.', err);
     try {
       await hooks.loading;
     } catch (loadErr) {
@@ -270,8 +286,9 @@ export async function playIntro(root: HTMLElement, hooks: IntroHooks): Promise<v
       hooks.fail(loadErr);
       return;
     }
-    startGame();
+    showHome();
   }
   teardown();
+  revealHome();
   hooks.done();
 }

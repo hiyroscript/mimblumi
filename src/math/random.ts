@@ -15,8 +15,16 @@ export function mulberry32(a: number): Rng {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
+/*
+ * The seed of the world being drawn. It starts as CFG.seed; setWorldSeed() in world/fields.ts changes it
+ * (the Home Screen draws a fresh random world). Only the world's hashes use it: the asset shapes in
+ * render/pools.ts are built once from CFG.seed.
+ */
+let worldSeed = CFG.seed;
+export function setHashSeed(seed: number): void { worldSeed = seed | 0; }
+
 export function hashInt(x: number, z: number): number {
-  let h = Math.imul(x | 0, 374761393) ^ Math.imul(z | 0, 668265263) ^ Math.imul(CFG.seed, 1442695041);
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(z | 0, 668265263) ^ Math.imul(worldSeed, 1442695041);
   h = Math.imul(h ^ h >>> 13, 1274126177);
   return (h ^ h >>> 16) >>> 0;
 }

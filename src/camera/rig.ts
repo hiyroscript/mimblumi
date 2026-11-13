@@ -32,12 +32,20 @@ export const Rig = {
     this.ct.x = damp(this.ct.x, p.x + v.x * 0.3, 6, dt);
     this.ct.z = damp(this.ct.z, p.z + v.z * 0.3, 6, dt);
     this.ct.y = damp(this.ct.y, p.y, 3, dt);
-    const pitch = lerp(0.86, 0.96, sm(CFG.zoomMin, CFG.zoomMax, this.dist));   // closer in, the view drops a little
+    this.aim(this.ct, this.dist, d, FWD.x, FWD.z);
+    return d;
+  },
+  /**
+   * Place the camera looking at ground point `ct` from distance `d`, heading along the ground direction
+   * (fx, fz). `zoom` sets the pitch, as the game's zoom does. Also moves the fog and sets `focus`, which
+   * the shadow frustum follows. The game always heads along FWD; the Home Screen's flyover sways a little.
+   */
+  aim(ct: THREE.Vector3, zoom: number, d: number, fx: number, fz: number): void {
+    const pitch = lerp(0.86, 0.96, sm(CFG.zoomMin, CFG.zoomMax, zoom));   // closer in, the view drops a little
     const ch = Math.cos(pitch) * d, cv = Math.sin(pitch) * d;
-    this.focus.copy(this.ct).addScaledVector(FWD, d * 0.1); this.focus.y += 0.9;
-    camera.position.set(this.focus.x - FWD.x * ch, this.focus.y + cv, this.focus.z - FWD.z * ch);
+    this.focus.copy(ct); this.focus.x += fx * (d * 0.1); this.focus.z += fz * (d * 0.1); this.focus.y += 0.9;
+    camera.position.set(this.focus.x - fx * ch, this.focus.y + cv, this.focus.z - fz * ch);
     camera.lookAt(this.focus);
     fog.near = d * 0.95; fog.far = d * 4.6;
-    return d;
   }
 };

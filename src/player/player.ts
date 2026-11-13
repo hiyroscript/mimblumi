@@ -80,6 +80,8 @@ export class PlayerState {
     blob.rotation.x = -Math.PI / 2; blob.renderOrder = 1;
     scene.add(blob);
   }
+  /** Show or hide the character and its contact shadow (hidden while the Home Screen is up). */
+  show(visible: boolean): void { this.root.visible = visible; this.blob.visible = visible; }
   place(x: number, z: number): void { this.pos.set(x, Fields.ground(x, z), z); this.vel.set(0, 0, 0); }
   update(dt: number, dirX: number, dirZ: number, mag: number, time: number): void {
     const target = mag <= 0 ? 0 : (mag < 0.5 ? CFG.walk * (mag / 0.5) : CFG.walk + (CFG.run - CFG.walk) * ((mag - 0.5) / 0.5));

@@ -10,6 +10,16 @@
   --note-bg: #e4e6d6;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color-scheme: light;
+
+  /* Glass, copied from Alva (css/base.css): translucent charcoal with a faint top sheen and a light
+     hairline, dark enough for white type over bright and dark ground alike. */
+  --glass-fill: rgba(10, 11, 13, 0.64);
+  --glass-fill-panel: rgba(10, 11, 13, 0.86);
+  --glass-fill-blur: rgba(10, 11, 13, 0.7);
+  --glass-edge: rgba(255, 255, 255, 0.14);
+  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02) 45%, rgba(255, 255, 255, 0) 75%);
+  --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 4px 16px rgba(0, 0, 0, 0.22);
+  --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.06), 0 28px 70px rgba(0, 0, 0, 0.18);
 }
 html, body { height: 100%; }
 body {
@@ -61,7 +71,7 @@ html.intro, html.intro body { background: #000; }
   cursor: default;
   outline: none;
   container-type: size;
-  /* The Mimblumi logo's side, the same as max-width: min(52%, 300px); max-height: 52% on a square image.
+  /* The Mavooli logo's side, the same as max-width: min(52%, 300px); max-height: 52% on a square image.
      It is a variable because the loading bar and "Press to start" are placed from it. */
   --game-logo: min(52vw, 300px, 52vh);
   --under-gap: clamp(14px, 3.2vh, 30px);
@@ -136,4 +146,159 @@ html.intro, html.intro body { background: #000; }
   width: 0; height: 100%;
   border-radius: inherit;
   background: #d4d4d4;
+}
+
+/* Step 5: solid white fades in over the logo and prompt, then away to show the Home Screen. */
+.splash-white {
+  position: absolute; inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+#splash.is-clear { background: transparent; }
+
+/* ------------------------------------------------------------
+   Glass (Alva's css/battle.css: .glass, .glass--panel). Where the browser can blur what is behind,
+   the fill is lighter and the world shows through, blurred; elsewhere the denser fill keeps text legible.
+   ------------------------------------------------------------ */
+.glass {
+  background: var(--glass-sheen), var(--glass-fill);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+}
+.glass--panel {
+  background: var(--glass-sheen), var(--glass-fill-panel);
+  box-shadow: var(--glass-shadow), var(--shadow-lg);
+}
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .glass--panel {
+    background: var(--glass-sheen), var(--glass-fill-blur);
+    -webkit-backdrop-filter: blur(12px) saturate(1.1);
+    backdrop-filter: blur(12px) saturate(1.1);
+  }
+}
+
+/* ------------------------------------------------------------
+   Home Screen (src/home/home.ts): three square-cornered glass cards in a row, the middle one larger,
+   over the drifting world. The cards size themselves to fit any screen without overflowing.
+   ------------------------------------------------------------ */
+#home {
+  position: fixed; inset: 0; z-index: 50;
+  display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+           max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  font-family: var(--font);
+  color: #fff;
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+  container-type: size;
+  --gap: clamp(12px, 1.6vw, 16px);
+  /* A side card's width. The row is 3.4 of these plus two gaps wide; the middle card is 1.2 × 1.3 of one
+     tall, with room under it for the "Coming soon" note. */
+  --card-w: min(184px, calc((100vw - 32px - 2 * var(--gap)) / 3.4), calc((100vh - 32px - 64px) / 1.56));
+  --card-h: calc(var(--card-w) * 1.3);
+}
+@supports (width: 1cqw) {
+  #home { --card-w: min(184px, calc((100cqw - 2 * var(--gap)) / 3.4), calc((100cqh - 64px) / 1.56)); }
+}
+#home > * { grid-area: 1 / 1; }
+
+.home-cards {
+  display: flex; align-items: center; justify-content: center;
+  gap: var(--gap);
+}
+.home-card {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: var(--card-w); height: var(--card-h);
+  margin: 0; padding: calc(var(--card-w) * 0.16) calc(var(--card-w) * 0.08) calc(var(--card-w) * 0.1);
+  box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center;
+  gap: calc(var(--card-w) * 0.07);
+  border-radius: 0;
+  color: #fff;
+  font-family: var(--font);
+  font-size: clamp(11px, calc(var(--card-w) * 0.095), 17px);
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 160ms ease-out, border-color 160ms ease-out;
+}
+.home-card--main {
+  width: calc(var(--card-w) * 1.2); height: calc(var(--card-h) * 1.2);
+  font-size: clamp(12px, calc(var(--card-w) * 0.115), 20px);
+}
+.home-icon {
+  display: block; flex: none;
+  width: clamp(22px, calc(var(--card-w) * 0.24), 38px);
+  height: clamp(22px, calc(var(--card-w) * 0.24), 38px);
+  margin-bottom: auto;
+}
+.home-card--main .home-icon {
+  width: clamp(26px, calc(var(--card-w) * 0.3), 46px);
+  height: clamp(26px, calc(var(--card-w) * 0.3), 46px);
+}
+.home-label {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  margin-bottom: auto;
+}
+.home-note {
+  font-size: 0.78em;
+  color: rgba(255, 255, 255, 0.72);
+  margin-top: calc(-1 * var(--card-w) * 0.04);
+}
+/* The label sits between the icon and the bottom; with a note, the two share that space. */
+.home-label:has(+ .home-note) { margin-bottom: 0; }
+.home-note { margin-bottom: auto; }
+
+/* Not available yet: the glass stays, the content dims and loses its colour. */
+.home-card[aria-disabled="true"] { cursor: not-allowed; }
+.home-card[aria-disabled="true"] > * { opacity: 0.5; filter: grayscale(1); }
+
+@media (hover: hover) {
+  .home-card:not([aria-disabled="true"]):hover { transform: translateY(-4px); border-color: rgba(255, 255, 255, 0.28); }
+}
+.home-card:not([aria-disabled="true"]):focus-visible { transform: translateY(-4px); border-color: rgba(255, 255, 255, 0.28); }
+.home-card:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.home-card:active:not([aria-disabled="true"]) { transform: translateY(-1px); }
+
+#home.is-waiting .home-card { opacity: 0; }
+#home.is-leaving .home-card { pointer-events: none; }
+
+/* "Coming soon", just under the middle card. */
+.home-toast {
+  margin: 0;
+  font-size: clamp(12px, 1.8vh, 15px);
+  letter-spacing: 0.04em;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(var(--card-h) * 0.6 + 18px + 50%));
+}
+
+/* The white the game is set up under, after a mode is picked. */
+.home-veil {
+  position: absolute; inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-card { transition: none; }
+  .home-card:not([aria-disabled="true"]):hover,
+  .home-card:not([aria-disabled="true"]):focus-visible,
+  .home-card:active:not([aria-disabled="true"]) { transform: none; }
 }

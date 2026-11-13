@@ -1,13 +1,32 @@
 import { CFG } from '../config';
 import { lerp, sm } from '../math/util';
-import { hash01 } from '../math/random';
+import { hash01, setHashSeed } from '../math/random';
 import { makeNoise } from '../math/noise';
+import type { Noise2 } from '../math/noise';
 import { PAL } from './palette';
 
 /* ============================================================
    2. WORLD FIELDS  (everything is sampled in world space, so chunks always agree)
    ============================================================ */
-export const N2 = makeNoise(CFG.seed);
+export let N2: Noise2 = makeNoise(CFG.seed);
+
+/**
+ * Switch every world field and hash to `seed`. Chunks already built belong to the old world: call
+ * World.reset() (or build a new ring with World.build()) before drawing again. It draws no rng() of its
+ * own, so the asset pools and the player are unaffected.
+ */
+export function setWorldSeed(seed: number): void {
+  setHashSeed(seed);
+  N2 = makeNoise(seed | 0);
+}
+
+/** A fresh seed for a random world, never the default one. */
+export function randomSeed(): number {
+  const a = new Uint32Array(1);
+  if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(a); else a[0] = Math.random() * 4294967296;
+  const s = a[0] | 0;
+  return s === CFG.seed ? s + 1 : s;
+}
 
 export const Fields = {
   height(x: number, z: number): number {
