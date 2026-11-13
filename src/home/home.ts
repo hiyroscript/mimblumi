@@ -64,8 +64,16 @@ export function openHome(root: HTMLElement): HomeScreen {
   row.setAttribute('aria-label', 'Choose how to play');
   const toast = make('p', 'home-toast');
   toast.setAttribute('role', 'status');
+  root.append(row, toast);
+  /*
+   * The white the game is set up under. It lives on <body>, not in #home: #home is padded for the safe
+   * areas (and is a size container and a grid), and a cover inside it can end up sized to that padded
+   * box, leaving a strip of the world visible around the notch and the edges. On its own it is a plain
+   * fixed layer over the whole screen. close() removes it.
+   */
   const veil = make('div', 'home-veil');
-  root.append(row, toast, veil);
+  veil.setAttribute('aria-hidden', 'true');
+  document.body.append(veil);
 
   const buttons: HTMLButtonElement[] = [];
   for (const c of CARDS) {
@@ -166,6 +174,7 @@ export function openHome(root: HTMLElement): HomeScreen {
       duration: reduced ? H.reducedFade : H.whiteFadeOut, easing: 'ease-in-out', fill: 'forwards'
     }));
     run.clear();
+    veil.remove();
     root.replaceChildren();
     root.className = '';
     root.style.pointerEvents = '';
