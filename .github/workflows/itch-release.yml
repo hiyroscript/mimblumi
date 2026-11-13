@@ -1,0 +1,121 @@
+# The itch.io release, built and checked on every push to main
+# (docs/itch-release.md): the tests, the release built with Vite's itch mode
+# and validated, then served under a nested path and played in a headless
+# Chrome inside a cross-origin iframe, and the ZIP kept on the run's page,
+# ready for the owner to upload to itch.io by hand. "Run workflow" (Actions
+# tab) runs it on any branch.
+#
+# The release job never uploads anything. The itch job pushes that same ZIP
+# to itch.io with butler only when the secret BUTLER_API_KEY and the
+# variable ITCH_PROJECT (user/game) are both set, and only for main;
+# otherwise it says so in a notice and succeeds. GitHub Pages is deployed on
+# its own, by deploy.yml, as before.
+
+name: itch.io release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install the build tools (Vite, TypeScript)
+        run: npm ci
+
+      - name: Run the tests
+        run: node --test
+
+      - name: Build and validate the release
+        run: npm run build:itch
+
+      # The runner's own Google Chrome, driven over its DevTools pipe.
+      - name: Serve it under a nested path and play it in a cross-origin iframe
+        run: npm run verify:itch
+
+      # package.json's, MAJOR.MINOR.PATCH (tools/itch/release.mjs).
+      - name: The version, for butler
+        id: version
+        run: |
+          version=$(node --input-type=module -e "import { releaseVersion } from './tools/itch/release.mjs'; console.log(releaseVersion())")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Downloadable from the run's page for 90 days. GitHub hands it over
+      # wrapped in a ZIP of its own: unzip that once to get mavooli-itch.zip.
+      - name: Keep the ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: mavooli-itch-${{ github.sha }}
+          path: dist/mavooli-itch.zip
+          if-no-files-found: error
+          compression-level: 0
+
+  itch:
+    name: itch.io (butler, optional)
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # One push to the html channel at a time: a later run waits for the one
+    # pushing, and a newer run waiting replaces an older one still waiting,
+    # so the channel always ends on the newest build.
+    concurrency:
+      group: itch-io-html
+      cancel-in-progress: false
+    env:
+      ITCH_PROJECT: ${{ vars.ITCH_PROJECT }}
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - name: An itch.io key and project, or nothing to do
+        id: itch
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::notice::No itch.io upload: only main is pushed to itch.io (this run is for $GITHUB_REF_NAME)."
+          elif [ -z "$BUTLER_API_KEY" ] || [ -z "$ITCH_PROJECT" ]; then
+            echo "::notice::No itch.io upload: the secret BUTLER_API_KEY or the variable ITCH_PROJECT is not set."
+          elif ! [[ "$ITCH_PROJECT" =~ ^[A-Za-z0-9_-]+/[A-Za-z0-9_-]+$ ]]; then
+            echo "::error::The variable ITCH_PROJECT should be user/game (for example hiyroscript/mavooli), not $ITCH_PROJECT."
+            exit 1
+          else
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: The ZIP from the release job
+        if: steps.itch.outputs.push == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: mavooli-itch-${{ github.sha }}
+          path: dist
+
+      - name: butler, itch.io's uploader
+        if: steps.itch.outputs.push == 'true'
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/butler.zip" https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q "$RUNNER_TEMP/butler.zip" -d "$RUNNER_TEMP/butler"
+          chmod +x "$RUNNER_TEMP/butler/butler"
+          "$RUNNER_TEMP/butler/butler" -V
+
+      # html is the channel itch.io plays in the browser. butler reads the key
+      # from BUTLER_API_KEY itself; it is never printed.
+      - name: Push the ZIP to the html channel
+        if: steps.itch.outputs.push == 'true'
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+        run: |
+          "$RUNNER_TEMP/butler/butler" push dist/mavooli-itch.zip "$ITCH_PROJECT:html" --userversion "$VERSION-${GITHUB_SHA::7}"
