@@ -1,118 +1,126 @@
-# Task: Add a splash screen, loading bar, "Press to start" and a colour-transition intro to Mimblumi
+# Task: Rebrand Mimblumi → Mavooli, replace the colour transition, and add a Home Screen
 
-## Context
+You are working in the `moo` repository (TypeScript + Vite + three.js **r128**, deployed to GitHub Pages). The game is currently called **Mimblumi**. Read `README.md`, `src/main.ts`, `src/intro/splash.ts`, `src/intro/run.ts`, `src/config.ts`, `src/style.css`, `src/dom.ts`, `src/loop.ts`, `src/camera/rig.ts`, `src/world/worldManager.ts`, `src/world/fields.ts` and `src/config.ts` before changing anything. Respect every rule in the README's "Things to keep in mind" section (one font `var(--font)`, set-up order, three.js pinned to r128, random-draw order is the world, start-up work goes through `Loader`).
 
-Mimblumi (`hiyroscript/mimblumi`) is currently one self-contained `index.html` (~1,120 lines):
-- An inline `<style>` block with `--haze`, `--ink`, `--note-bg` and `--font-text: "Avenir Next", "Segoe UI", system-ui, sans-serif`.
-- `<div id="stage">` (the Three.js canvas goes here) and `<p id="fail" hidden>` (the WebGL error note).
-- Three.js r128 loaded from cdnjs, then one IIFE script. That script builds the world and ends with `start(saved)`, which builds the player, generates the first ring of chunks synchronously (`while (World.step())`), wires input/resize and starts `requestAnimationFrame(frame)`. `window.claude.hot` (`snapshot` / `ready` / `data`) is used for hot reload.
-
-The intro must work the same way as the splash in my **Alva** repo (`hiyroscript/alva`). Read these files there first:
-- `js/screens/splash-screen.js`: the sequence logic
-- `css/splash.css`: the styling
-- `js/config.js` → `CONFIG.splash`: the timings
-- `css/base.css` → `--font`: the font stack
-
-Copy Alva's behaviour and feel exactly, adapted to Mimblumi's single-file setup. Keep everything inside `index.html` (inline CSS + JS, no build step, no new frameworks) unless an image file has to live next to it.
+Do the work in three parts, in this order. After each part run `npm run typecheck` and `npm run build` and fix every error before moving on.
 
 ---
 
-## NEW STRICT RULE: one font for the whole game
+## Part 1 — Full rebrand to "Mavooli"
 
-The "a game by hiyroscript" credit in Alva uses Alva's `--font` stack:
+Replace every user-facing and code-facing occurrence of the old name. Search the whole repo (case-insensitive) for `mimblumi` and change each one:
 
-```css
-system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif
-```
+- `index.html`: `<title>Mavooli</title>`; the logo preload `href`.
+- `package.json` / `package-lock.json`: `"name": "mavooli"` (both name fields in the lock file); update `description` if it names the game.
+- `vite.config.ts`: `base` from `/mimblumi/` to `/mavooli/` (the GitHub repo/Pages path will be renamed to match — mention this in the README).
+- `src/intro/splash.ts`: the logo import, `alt` text (`'Mavooli'`), the header comment, and the `[Mimblumi]` console prefixes → `[Mavooli]`.
+- `src/images.d.ts` and any other import of the logo.
+- Rename the logo file `mimblumi.png` → `mavooli.png` (use `git mv`). Keep the current image as a placeholder and leave a clear `TODO` in the README that the Mavooli logo art, `favicon.ico` and `apple-touch-icon.png` must be replaced with new artwork. Do not try to generate a new logo.
+- `README.md`: title, live URL (`https://hiyroscript.github.io/mavooli/`), dev/preview URLs, file tree, and every prose mention. Rewrite "The intro" section to describe the new flow from Part 2 and add a "The Home Screen" section for Part 3.
+- `.github/workflows/deploy.yml`: any name/path references.
+- Comments, CSS class names, ids, localStorage/sessionStorage keys, constants or log messages that contain the old name.
 
-From now on this is **the only font in Mimblumi**:
-1. Replace `--font-text` in `:root` with a single variable, `--font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;`. Remove "Avenir Next".
-2. The `body`, the credit, the loading label (if any), "Press to start", the `#fail` note and **every future text element** must use `font-family: var(--font)`. Also fix the inline `font:14px -apple-system,BlinkMacSystemFont,sans-serif` in the first `<style>` on line 1 so it uses the same stack.
-3. Credit styling must match Alva exactly: weight 400, `letter-spacing: 0.34em`, `padding-left: 0.34em` (balances the trailing spacing), `font-size: clamp(13px, 2.1vh, 17px)`, colour `#d4d4d4`, centred, `bottom: max(calc(env(safe-area-inset-bottom) + 7vh), 9vh)`.
-4. Add a short comment at the top of the style block stating the rule: *"One font for the whole game: var(--font). Never add another font-family."*
-
----
-
-## Assets
-
-Add the two logos to the repo root:
-- `hs.jpg`: the hiyroscript logo (white bear with glasses on a blue background). This is the same file Alva uses as `./hs.jpg`.
-- `mimblumi.png`: the game logo (a light-grey hand-drawn "M" on a bright blue `#0399FF` square).
-
-If you cannot get the binary files, copy `hs.jpg` from the Alva repo. Leave a clear TODO for `mimblumi.png` and do **not** commit a placeholder image.
+When done, `grep -rni mimblumi . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist` must return nothing.
 
 ---
 
-## Full sequence (in order)
+## Part 2 — New "Press to start" transition
 
-### 0. Boot: black and gated on images
-- Add a full-screen `#splash` overlay above `#stage` (`position: fixed; inset: 0; z-index` above everything; background `#000`). Before anything runs, set `html`/`body` to black so the page never flashes the haze colour.
-- **Like Alva, the splash does not start until ALL images have loaded AND decoded.** Load both images with `new Image()`, wait for `onload`, then `await img.decode()`. Only after both succeed does anything appear on screen. Reuse the loaded `<img>` elements; never swap `src` or request them again.
-- If either image fails to load or decode, skip the logo animations entirely: no broken images, no partial artwork. Log `console.error('[Mimblumi] Splash unavailable; skipping the logos.', err)` and go straight to step 3 (loading).
+Keep steps 0–4 of the intro exactly as they are (hiyroscript logo + "a game by hiyroscript", black gap, Mavooli logo, loading bar, pulsing "Press to start").
 
-### 1. hiyroscript logo + credit (copy Alva exactly)
-- Show `hs.jpg` centred, `max-width: min(70%, 640px); max-height: 65%; object-fit: contain; border-radius: clamp(12px, 4vmin, 40px)`.
-- Show "a game by hiyroscript" under it (the credit described above). It fades in and out **together with** the logo, but it does **not** zoom.
-- Animation (Web Animations API, same as Alva): one opacity track `0 → 1` (fadeIn) → hold → `1 → 0` (fadeOut) with `ease-in-out`, plus a separate, continuous linear `transform: scale(0.96) → scale(1.04)` across the whole duration.
-- Timings: copy Alva's `CONFIG.splash` into a `CFG.splash` object: `fadeIn: 900, hold: 1600, fadeOut: 800, zoomFrom: 0.96, zoomTo: 1.04, betweenImages: 220, finalBlackHold: 200, reducedMotionHold: 1000`.
-- Then 220 ms of pure black.
+Replace step 5 (`playTransition` in `src/intro/splash.ts`):
 
-### 2. Mimblumi logo
-- Same fade + zoom as step 1, but with no credit text. Size: `max-width: min(52%, 300px); max-height: 52%` (matches Alva's game logo). Give it a small rounded radius so the blue square looks intentional.
-- **Change from Alva:** the Mimblumi logo **does not fade out**. When its fade-in + hold finish, it stays on screen at full opacity, centred, at its final scale (freeze the zoom at the end value with `fill: 'forwards'`, or hold it static at scale 1). It stays as the title logo for steps 3 and 4.
+- **Remove** the colour run entirely (black → blue → green → brown → white). Delete `transitionColors`, `transitionMs`, `reducedTransitionMs` and `finalBlackHold` from `CFG.splash` if they are no longer used, and remove their mentions from the README.
+- On the press: stop the pulse, then the **screen fades in to solid white** (`#FFFFFF`) over the logo and prompt — a full-screen white layer going from opacity 0 → 1, ease-in-out. Add `CFG.splash.whiteFadeIn` (≈ 600 ms).
+- Hold white briefly (`CFG.splash.whiteHold`, ≈ 150 ms). While it is white: remove the logo/prompt, mount and prepare the Home Screen (Part 3), start the home background world, and wait two frames (`run.frames2()`) so its first frame is drawn.
+- Then **fade the white out** (`CFG.splash.whiteFadeOut`, ≈ 700 ms, ease-in-out) to reveal the **Home Screen**, not the game.
+- With `prefers-reduced-motion: reduce`, use shorter fades (≈ 250 ms each) and no hold.
+- Every timer/animation/listener must still go through the `Run` so `clear()` stops everything. The intro must still never leave the page on a black or white screen: if anything fails, fall through to the Home Screen (or to `#fail` if WebGL is unavailable).
+- The hot-reload `quickStart` path (saved position) should still skip the intro and go straight into the game.
 
-### 3. Loading bar (appears when the logo animation ends)
-- Fade in a thin, rounded loading bar centred **under the logo** (≈ `min(60vw, 260px)` wide, 4–6 px tall). Track: white at ~20 % opacity; fill: `#d4d4d4` or white. The fill width shows real progress.
-- **Wire it to real work.** Restructure the boot so the heavy work is a set of tracked tasks, not something that runs blindly before the splash. At minimum:
-  - checking that Three.js / WebGL is available,
-  - building the player model (`Player.build()`),
-  - generating the initial chunk ring (`World.plan` + the `World.step()` loop). **Run the steps in batches across animation frames** so the bar can repaint instead of freezing the page,
-  - `World.refill()`, the first `Rig.resize()` / `Rig.snap()`, and compiling shaders (`renderer.compile(scene, camera)` or one hidden render) so the first visible frame doesn't stutter.
-- Make it a small reusable loader, e.g. `Loader.add(label, weight, asyncFn)` + `Loader.run(onProgress)`, so any future model, texture, sound or other asset can be added in one line and automatically counts toward the bar. Ease the bar toward its target (no jumps) and never let it go backwards.
-- The world can start loading as soon as the splash begins (in parallel with the logos) for speed, **but the bar only becomes visible after the Mimblumi logo's fade-in + hold ends**. If loading finished earlier, show the bar fill quickly to 100 % and continue. Do not skip the bar step completely: show it for at least ~300 ms so it doesn't flicker.
-- If WebGL / Three.js is missing, stop here, hide the splash and show the existing `#fail` note (now in `var(--font)`).
-
-### 4. "Press to start"
-- When loading reaches 100 %, cross-fade the loading bar out and **replace it, in the same spot under the logo**, with the text **"Press to start"**: `var(--font)`, same letter-spacing style as the credit, `#d4d4d4`, centred.
-- It flashes: a gentle, infinite opacity pulse (e.g. `1 → 0.25 → 1` over ~1.4 s, ease-in-out). It should not be harsh blinking.
-- The whole screen is the button: a single `pointerdown` anywhere (mouse, touch, pen) or **any key** (keyboard) starts the game. Accept input only once (ignore repeats and remove the listeners). Make sure this tap does **not** also leak into `Input` as a drag or move for the player: either `Input.init(stage)` runs only after the intro has finished, or the event is stopped from reaching the stage.
-- Accessibility: give the overlay `role="button"`, `tabindex="0"` and `aria-label="Press to start"`, and focus it.
-
-### 5. Colour transition into the game
-After the press:
-1. "Press to start" and the Mimblumi logo fade out (~400 ms).
-2. The splash background animates smoothly through this exact order, each colour **cross-fading** into the next (no hard cuts):
-   **black `#000000` → blue `#0399FF` (the Mimblumi logo blue) → green → brown → white `#FFFFFF`**
-   - Pick a soft, natural green and brown that suit the world's palette (e.g. green ≈ `#5E9E4A`, brown ≈ `#7A5636`). Put all colours in `CFG.splash.transitionColors` so they're easy to change.
-   - Implement it as one Web Animation on `background-color` with evenly spaced keyframes and `ease-in-out`, about 2.4–3 s total (`CFG.splash.transitionMs`).
-3. On white, the game must already be running underneath (start the `requestAnimationFrame(frame)` loop just before or at the white keyframe). Then the white overlay **fades its opacity to 0** (~900 ms), revealing the world.
-4. Remove the splash from the DOM, put the page background back to `var(--haze)`, then call `Input.init(stage)` and attach the resize listeners (if not already done).
+`IntroHooks` changes: replace `startGame()` with something like `showHome()` that is called under the white. The game loop itself only starts gameplay when a mode is picked on the Home Screen.
 
 ---
 
-## Reduced motion
-If `matchMedia('(prefers-reduced-motion: reduce)')` matches (same as Alva):
-- Logos appear without zoom and are each held for `reducedMotionHold` (1000 ms) before moving on.
-- "Press to start" doesn't pulse (static at full opacity).
-- The colour transition becomes a single short cross-fade (or a much shorter run through the colours) followed by the fade into the game.
+## Part 3 — The Home Screen
 
-## Hot reload (`window.claude.hot`)
-Keep the existing `hot.snapshot` / `hot.ready` / `hot.data` behaviour. On a **hot reload with saved data**, skip the whole intro and start straight into the world at the saved position/zoom, so development isn't slowed down. The full intro only runs on a normal cold start.
+### Background: a random world each time
+- Every time the Home Screen opens, the background is a **freshly generated, random world**: pick a new random seed (e.g. `crypto.getRandomValues` or `Math.random`) instead of `CFG.seed`. The seed must flow through the existing seeded noise/rng code (`math/noise.ts`, `math/random.ts`, `world/fields.ts`) — add a function such as `setWorldSeed(seed)` that rebuilds the noise fields, and call it before chunks are generated. Do not reorder existing `rng()` calls.
+- The **camera slowly scrolls over the world** on its own: no player control, no player model visible (hide the player or don't place it), a smooth constant drift in one direction at a pleasant height/angle (add `CFG.home.scrollSpeed`, `CFG.home.cameraZoom`, `CFG.home.direction`; a gentle slow yaw sway is welcome). Chunks must keep streaming in ahead of the camera through `World.plan()` / `World.step()` the same way they do for the player, without hitches (respect `CHUNK_BATCH_MS`).
+- The world under the Home Screen must render with the existing renderer, lights, fog and materials — same look as the game.
+- `Input` must **not** be listening while the Home Screen is up; taps go to the cards only.
 
-## Robustness
-- Use one run token and cancel all animations, timers and listeners together, like Alva's `run` / `active()` / `clear()`, so nothing leaks or fires twice.
-- Errors inside a step must never leave the player stuck on a black screen. Always fall through to the game or to `#fail`.
-- No layout shift: the logo stays exactly centred while the bar and "Press to start" appear under it. Respect safe-area insets the way Alva does (symmetric padding `max(24px, env(safe-area-inset-*))`).
-- Works on portrait mobile and desktop, in both light and dark system themes.
-- Don't touch the world generation, rendering, shaders or gameplay logic beyond restructuring `start()` into loader tasks.
+### The three cards
+- Three cards placed **horizontally in a row**, centred on screen, separated by a **small gap** (≈ 12–16 px, use `clamp()`).
+- Order and content (left → right):
+  1. **"Play with friends!"** — a **globe icon** (represents online) at the **top centre** of the card. This card is **unavailable**: online is not set up yet. Show it visibly disabled (lower opacity / desaturated, `cursor: not-allowed`, `aria-disabled="true"`), with a small secondary line "Unavailable right now". Tapping it does nothing (optionally a tiny shake or a short "Coming soon" toast — no navigation).
+  2. **"Survival"** — a **play icon** (▶ triangle) at the top centre. This card is the **middle one and must be bigger** than the other two (e.g. ~1.2× width and height; side cards vertically centred against it).
+  3. **"Creative mode"** — a **tool icon** (🛠️ hammer + wrench) at the top centre.
+- Draw the three icons as **inline SVG** (stroke icons, white, ~28–40 px, scaled up slightly on the middle card) so they look identical on every platform — do not rely on emoji glyphs.
+- Labels use `font-family: var(--font)`, white text, centred under the icon.
+- **No rounded corners**: `border-radius: 0` on the cards (and on anything inside them that shows an edge).
+- **Glass look copied from the Alva repo's dialogs** (`alva/css/base.css` tokens and `.glass` / `.glass--panel` in `alva/css/battle.css`). Port these exact values into `src/style.css` as CSS custom properties and classes:
+  ```css
+  --glass-fill: rgba(10, 11, 13, 0.64);
+  --glass-fill-panel: rgba(10, 11, 13, 0.86);
+  --glass-fill-blur: rgba(10, 11, 13, 0.7);
+  --glass-edge: rgba(255, 255, 255, 0.14);
+  --glass-sheen: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02) 45%, rgba(255,255,255,0) 75%);
+  --glass-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 16px rgba(0,0,0,0.22);
 
-## Done when
-- [ ] Cold load: black → hs.jpg + "a game by hiyroscript" (fade + zoom, identical to Alva) → black gap → Mimblumi logo fades/zooms in and stays.
-- [ ] Nothing appears until both images are loaded and decoded. If an image fails, the logos are skipped cleanly.
-- [ ] The loading bar appears under the logo, reflects real loading progress and never freezes the page.
-- [ ] "Press to start" replaces the bar in the same spot, pulses, and starts on click, tap or key, once only.
-- [ ] Background goes black → blue → green → brown → white with smooth cross-fades, then white fades away to show the running game.
-- [ ] The tap that starts the game doesn't move the player.
-- [ ] `var(--font)` (Alva's stack) is the only font anywhere in the file. "Avenir Next" and `BlinkMacSystemFont`-only stacks are gone.
-- [ ] Reduced motion and hot reload behave as described above.
-- [ ] Commit with a clear message, e.g. `Add Alva-style splash, loader, press-to-start and colour intro`.
+  .glass--panel {
+    background: var(--glass-sheen), var(--glass-fill-panel);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-shadow), 0 12px 32px rgba(0,0,0,0.35);
+  }
+  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .glass--panel {
+      background: var(--glass-sheen), var(--glass-fill-blur);
+      -webkit-backdrop-filter: blur(12px) saturate(1.1);
+      backdrop-filter: blur(12px) saturate(1.1);
+    }
+  }
+  ```
+  (Check Alva's `--shadow-lg` value and use it instead of the placeholder shadow above.) The world must be visible, blurred, through the cards.
+- Hover/focus (enabled cards only): slight lift (`translateY(-4px)`) and a brighter edge (`rgba(255,255,255,0.28)`), with a visible keyboard focus ring. Cards are `<button>` elements, reachable with Tab / arrow keys, activated with Enter/Space.
+
+### Entrance animation: falling from the top
+- When the white fades out, the three cards **fall in from above the top of the screen** to their resting positions.
+- They all fall **together**, with only a **tiny stagger** between them (≈ 60–80 ms; left, then middle, then right). Add `CFG.home.cardFallMs` (≈ 650 ms) and `CFG.home.cardStagger` (≈ 70 ms).
+- Use a falling easing with a small settle/bounce at the end (e.g. `cubic-bezier(0.22, 1.2, 0.36, 1)` or keyframes that overshoot slightly and settle), plus opacity 0 → 1 over the first part.
+- Start the fall so it lines up with the white fading out (cards can begin while the white is ~halfway gone).
+- Use `Element.animate` through the `Run` (or an equivalent cancellable helper) so it is cleaned up.
+- With reduced motion: no fall — a simple quick fade-in.
+
+### Layout / responsiveness
+- Must fit and look good on phones in **portrait and landscape**, tablets and desktop. Respect safe areas (`env(safe-area-inset-*)`).
+- In very narrow portrait screens, keep the three cards in one row but scale them down with `clamp()`/`min()`; never let them overflow or overlap.
+- Cards should feel substantial: roughly portrait-shaped (taller than wide).
+
+### What the cards do
+- **Survival**: fade the Home Screen out (cards rise/fade away), then start the existing game exactly as it played before (player placed, `Input.init(stage)`, normal camera follow). Use the normal world seed behaviour (`CFG.seed`, or keep the random one — choose `CFG.seed` and leave a comment so it's easy to change).
+- **Creative mode**: for now, start the same game as Survival but pass a `mode: 'creative'` flag through to the game state (store it somewhere like `src/game/mode.ts`) so creative-only features can be added later. Leave a clear TODO.
+- **Play with friends!**: disabled (see above).
+
+### Code organisation
+- New folder `src/home/` with:
+  - `home.ts` — builds the DOM for the Home Screen, plays the card entrance, handles card selection, returns a promise for the chosen mode.
+  - `flyover.ts` — the auto-scrolling camera over the random world (start/stop, per-frame update called from `loop.ts`).
+  - `icons.ts` — the three inline SVG icons.
+- Add a `#home` container to `index.html` (and to `src/dom.ts`).
+- Update `src/loop.ts` so the frame loop can run in two states: `home` (flyover camera, no player input) and `game` (current behaviour).
+- Update the README file tree and descriptions.
+
+---
+
+## Acceptance checklist
+- [ ] No "Mimblumi" anywhere in the repo; title, logo alt text, URLs and package name say Mavooli; `base` is `/mavooli/`.
+- [ ] Intro logos, loading bar and "Press to start" unchanged.
+- [ ] Pressing: screen fades to white, then the white fades out to the Home Screen. No coloured sequence.
+- [ ] Home Screen background is a different random world every time, with the camera drifting smoothly across it; no stutter while chunks load.
+- [ ] Three square-cornered Alva-style glass cards in a row with a small gap, middle (Survival) larger, icons (globe / play / tool) at the top centre of each.
+- [ ] Cards fall from the top nearly simultaneously with a tiny stagger.
+- [ ] "Play with friends!" clearly unavailable and does nothing; Survival and Creative mode start the game.
+- [ ] Works with mouse, touch and keyboard; respects reduced motion; works in portrait and landscape.
+- [ ] `npm run typecheck` and `npm run build` pass; no console errors.
+- [ ] Commit with a clear message.
