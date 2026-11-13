@@ -1,14 +1,17 @@
 <!doctype html>
-<html>
+<html class="intro">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Infinite 3D World</title>
+<link rel="preload" as="image" href="/hs.jpg">
+<link rel="preload" as="image" href="/mimblumi.png">
 <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
 <div id="stage"></div>
 <p id="fail" hidden>This world needs WebGL to draw. Open it in a current browser with hardware acceleration turned on.</p>
+<div id="splash"></div>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
