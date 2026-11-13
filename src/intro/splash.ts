@@ -2,6 +2,7 @@ import hsUrl from '../../hs.jpg';
 import logoUrl from '../../mavooli.png';
 import { CFG } from '../config';
 import { Run } from './run';
+import { focusGame } from '../input/embed';
 
 /* ============================================================
    INTRO — hiyroscript logo, Mavooli logo, loading bar, "Press to start", white into the Home Screen
@@ -208,6 +209,7 @@ async function playPrompt(root: HTMLElement, run: Run, reduced: boolean, bar: HT
       pressed = true;
       e.preventDefault();
       e.stopPropagation();
+      focusGame();                        // embedded (itch.io), the keys reach the game from this press on
       offPointer(); offKey();
       resolve();
     };

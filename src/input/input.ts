@@ -1,6 +1,7 @@
 import { CFG } from '../config';
 import { clamp } from '../math/util';
 import { Rig } from '../camera/rig';
+import { focusGame } from './embed';
 
 /* ============================================================
    11. INPUT — drag anywhere to walk, two fingers to zoom, nothing drawn on screen
@@ -14,6 +15,7 @@ export const Input = {
     const opt = { passive: false };
     el.addEventListener('pointerdown', e => {
       e.preventDefault();
+      focusGame();                          // embedded (itch.io), the keys follow the press into the game
       try { el.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional */ }
       this.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (this.pts.size === 1) { this.moveId = e.pointerId; this.ax = e.clientX; this.ay = e.clientY; this.mx = this.my = 0; }

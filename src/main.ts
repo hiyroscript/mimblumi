@@ -10,6 +10,7 @@ import { setWorldSeed, randomSeed } from './world/fields';
 import { Player, createPlayer } from './player/player';
 import { Rig } from './camera/rig';
 import { Input } from './input/input';
+import { holdPageKeys } from './input/embed';
 import { startLoop, setLoopState, clearCanopyWindow } from './loop';
 import { Loader } from './boot/loader';
 import { playIntro } from './intro/splash';
@@ -206,6 +207,7 @@ function launch(saved?: Saved | null): void {
 }
 
 function boot(): void {
+  holdPageKeys();                          // inside itch.io's frame, keys must never scroll the page around the game
   const hot = window.claude && window.claude.hot;
   /* Until a game is being played (during the intro and on the Home Screen) there is nothing to keep, so the next load plays the intro. */
   if (hot && hot.snapshot) hot.snapshot(() => (Player && Game.mode ? { x: Player.pos.x, z: Player.pos.z, zoom: Rig.want, mode: Game.mode } : {}));
