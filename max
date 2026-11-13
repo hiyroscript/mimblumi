@@ -1,119 +1,118 @@
-# Prompt: Split `mimblumi` into a multi-file TypeScript project, with no change in behaviour
+# Task: Add a splash screen, loading bar, "Press to start" and a colour-transition intro to Mimblumi
 
-You are working in the GitHub repo `hiyroscript/mimblumi`. Right now the whole game is one file, `index.html`, about 1,120 lines and 60 KB. It is an infinite, procedurally generated low-poly 3D world built with three.js **r128**, which is loaded as a global from cdnjs. The game is served by **GitHub Pages** from the repo root, at `https://hiyroscript.github.io/mimblumi/`.
+## Context
 
-Turn it into a TypeScript project with many small modules, built with Vite and deployed to GitHub Pages by GitHub Actions. **The result must look, feel and behave exactly like the current game, down to the pixel.** This is a pure refactor: no new features, no "improvements", no retuned numbers, no change to the visual style.
+Mimblumi (`hiyroscript/mimblumi`) is currently one self-contained `index.html` (~1,120 lines):
+- An inline `<style>` block with `--haze`, `--ink`, `--note-bg` and `--font-text: "Avenir Next", "Segoe UI", system-ui, sans-serif`.
+- `<div id="stage">` (the Three.js canvas goes here) and `<p id="fail" hidden>` (the WebGL error note).
+- Three.js r128 loaded from cdnjs, then one IIFE script. That script builds the world and ends with `start(saved)`, which builds the player, generates the first ring of chunks synchronously (`while (World.step())`), wires input/resize and starts `requestAnimationFrame(frame)`. `window.claude.hot` (`snapshot` / `ready` / `data`) is used for hot reload.
 
-Read all of `index.html` before you change anything.
+The intro must work the same way as the splash in my **Alva** repo (`hiyroscript/alva`). Read these files there first:
+- `js/screens/splash-screen.js`: the sequence logic
+- `css/splash.css`: the styling
+- `js/config.js` → `CONFIG.splash`: the timings
+- `css/base.css` → `--font`: the font stack
 
----
-
-## 1. Hard rules (do not break these)
-
-1. **Identical output for the same seed.** The world has to be bit-for-bit the same: the same trees, rocks, flowers and grass in the same places, with the same colours, and the same player model. The procedural generation depends on the **exact order of `rng()` calls**, so:
-   - Never reorder, merge, hoist or "simplify" any `rng()` call, including calls that sit inside object literals, function arguments or `||` expressions. JavaScript evaluates arguments and object properties left to right, so keep each one in the same position in the code.
-   - In `buildPools`, keep the pools created in exactly this order: oak ×3, pine ×3, blossom ×2, birch ×3, bush ×2, rocks `['round','round','tall','flat','round']`, one pool per entry of `FLOWERS` in order, then gShort, gTall, gLeafy. All of these share **one** `mulberry32(CFG.seed ^ 0x51ed270b)` stream. Pool indices are what `inst[k]` refers to.
-   - In `makeChunk`, keep the order trees → bushes → rocks (clusters, then pebbles) → flowers → grass → terrain mesh. The tree loop draws `r1..r5` *before* its `continue` checks, and that has to stay.
-   - `Player.build` uses `mulberry32(7)`. Keep the part-building order the same.
-2. **Keep every number.** Copy every constant, multiplier, threshold, colour hex and noise offset exactly (`CFG`, `PAL`, `LEAF`, `BARK`, `STONE`, `MOSS`, `FLOWERS`, the pool capacities, shadow settings, fog, camera FOV logic, input radius and dead zone, the Perf thresholds, and so on).
-3. **Keep the integer math exactly as written.** `hashInt`, `mulberry32` and the simplex permutation rely on `Math.imul`, `>>>`, `|0` and `Uint8Array` semantics. Do not replace them with "cleaner" equivalents.
-4. **Same three.js version: r128.** Install `three@0.128.0` from npm (pin the exact version, no caret) instead of the CDN script. Do **not** upgrade. Newer versions removed or renamed `outputEncoding`, `sRGBEncoding`, `Color.convertSRGBToLinear`, `updateRange` and the default lighting units, and they changed the shader chunks that the `onBeforeCompile` patches rely on, so an upgrade changes the visuals. For types, add `@types/three` at the version closest to 0.128 that exists on npm. If its types are missing something the code uses (for example `instanceColor` assignment, or `updateRange`), add a small local `.d.ts` augmentation or a narrow cast. Do not change the runtime code to fit the types.
-5. **Keep the shader patches character for character.** `matTree.onBeforeCompile` (the dithered see-through window over the player) and `matVeg.onBeforeCompile` (wind sway, plus replacing `gl_FrontFacing` with `true`) do string and regex replacements on r128's built-in shaders. Move the GLSL into its own module as template strings or `?raw` imports, but keep the injected code and the anchors (`void main() {` regex, `#include <project_vertex>`, `#include <begin_vertex>`) exactly the same.
-6. **Keep the HTML/CSS behaviour.** Keep the same `<title>` ("Infinite 3D World"), viewport meta (`viewport-fit=cover`), safe-area padding, CSS variables (`--haze`, `--ink`, `--note-bg`, `--font-text`), `#stage` and its cursor rules, `touch-action`/`user-select`/`overscroll-behavior` locks, and the `#fail` WebGL fallback with its exact text. Both inline `<style>` blocks may become one `src/style.css`, but every rule must still apply with the same specificity and result, including the `[hidden]:not([hidden=until-found i])` rule.
-7. **Keep the failure paths.** Show `#fail` if WebGL renderer creation throws, or if `start` throws (`console.error` the error first). The old `if (!window.THREE)` check no longer applies once three is bundled; replace it with the renderer try/catch, which is already there.
-8. **Keep the `window.claude.hot` hook.** Keep `snapshot(() => ({x, z, zoom}))`, `hot.ready(start)` and the fallback `start(hot.data || {})` exactly as they are, typed through an optional global declaration (`declare global { interface Window { claude?: { hot?: {...} } } }`).
-9. **Keep the input and timing exactly the same:** pointer drag joystick with the trailing anchor, two-finger pinch zoom, wheel zoom `exp(deltaY*0.0012)`, WASD and arrow keys with Shift to run, the `preventDefault` list (`touchstart`, `touchmove`, `gesturestart`, `gesturechange`, `contextmenu`, `dblclick`, `selectstart`) with `{ passive: false }`, the blur reset, `dt` clamped to 0.05 s, at most one chunk built per frame, and the refill debounce of 8 frames.
+Copy Alva's behaviour and feel exactly, adapted to Mimblumi's single-file setup. Keep everything inside `index.html` (inline CSS + JS, no build step, no new frameworks) unless an image file has to live next to it.
 
 ---
 
-## 2. Target structure
+## NEW STRICT RULE: one font for the whole game
 
-```
-mimblumi/
-├─ index.html                 # minimal shell: meta, title, #stage, #fail, <script type="module" src="/src/main.ts">
-├─ package.json
-├─ tsconfig.json              # strict: true, target ES2020, moduleResolution "bundler", noEmit
-├─ vite.config.ts             # base: '/mimblumi/'
-├─ .github/workflows/deploy.yml
-├─ .gitignore                 # node_modules, dist
-├─ README.md                  # how to run, build, deploy
-└─ src/
-   ├─ main.ts                 # boot: hot-reload hook, start(), error → #fail
-   ├─ style.css
-   ├─ config.ts               # CFG, CH, TAU
-   ├─ math/
-   │  ├─ util.ts              # clamp, lerp, sm, damp
-   │  ├─ random.ts            # mulberry32, hashInt, hash01, pick
-   │  └─ noise.ts             # makeNoise (seeded 2D simplex)
-   ├─ color.ts                # rgb, mul, mixc, plus the type alias RGB = [number, number, number]
-   ├─ world/
-   │  ├─ palette.ts           # PAL, LEAF, BARK, STONE, MOSS, STEM, LEAFG, POLLEN
-   │  ├─ fields.ts            # N2 + Fields (height, cell, ground, forest…, cellColor)
-   │  ├─ chunk.ts             # makeChunk + shared scratch buffers S, _cc
-   │  └─ worldManager.ts      # World (plan, step, update, refill, collide)
-   ├─ geometry/
-   │  └─ GeoB.ts              # GeoB class, FACES, scratch vectors
-   ├─ assets/
-   │  ├─ trees.ts             # leafBlob, makeOak, makePine, makeBlossom, makeBirch, makeBush
-   │  ├─ rocks.ts             # makeRock
-   │  ├─ flowers.ts           # FLOWERS, makeFlower
-   │  └─ grass.ts             # makeGrass
-   ├─ render/
-   │  ├─ renderer.ts          # renderer, COARSE, REDUCED, scene, fog, camera
-   │  ├─ lights.ts            # FWD, RIGHT, SUN, SUNH, hemi, sun, bounce, L_X, L_Y, SHADOW_RES, lightFollow
-   │  ├─ materials.ts         # U uniforms, matTerrain/Rock/Player/Tree/Veg
-   │  ├─ shaders.ts           # the GLSL injection strings
-   │  └─ pools.ts             # pools, KIND, addPool, buildPools
-   ├─ player/
-   │  └─ player.ts            # Player (build, place, update, animate)
-   ├─ camera/
-   │  └─ rig.ts               # Rig (snap, resize, update)
-   ├─ input/
-   │  └─ input.ts             # Input + KEYMAP
-   ├─ perf.ts                 # Perf
-   └─ loop.ts                 # frame(), the per-frame _in/_p/_buf scratch, time bookkeeping
+The "a game by hiyroscript" credit in Alva uses Alva's `--font` stack:
+
+```css
+system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif
 ```
 
-You may adjust the file boundaries if a split clearly reads better, but keep each module focused, and keep **module side effects in the same order as the original top-to-bottom execution.**
-
-### Initialisation order and circular dependencies
-The original runs in a single scope, so these happen in this order: noise and fields are created → renderer (the bail-out point) → scene, camera, lights, materials → `buildPools()` → definitions of World, Player, Rig, Input, Perf → `start()`. Several objects refer to each other only at runtime (`Rig.resize` uses `Perf.pr`, `Player.update` calls `World.collide`, `Input` writes `Rig.want`, `makeChunk` reads `pools`/`KIND`, `World` adds to `scene`).
-- Do **not** create renderers, scenes or pools as top-level side effects of imports in a way that could run before the WebGL check or in a different order. Prefer explicit init functions (`createRenderer()`, `initLights(scene)`, `buildPools(scene)`, …) that `main.ts` calls in the original order, or a small `context` object passed in.
-- `buildPools` must finish before the first `makeChunk` call, and it must run only once.
-- Circular imports between modules that only touch each other inside functions are fine with ES modules. Never read a circular import at module top level.
-
-### TypeScript expectations
-- `strict: true`. Give the chunk data proper types (`interface Chunk { cx; cz; mesh: THREE.Mesh; inst: (InstData | null)[]; colliders: Float32Array }`), the `box()` options (`interface BoxOpts { x; y; z; w; h; d; c: RGB; c2?; taper?; rx?; ry?; rz?; q?; jit?; shade?; fj?; noBottom?; noTop? }`), the flower species, and so on.
-- Keep the `== null` defaults (`o.taper == null ? 1 : o.taper`) and the `||` defaults exactly as they are; `??` would behave differently for `0`. If you change one of them, prove it is equivalent for every call site.
-- Avoid `any`. Narrow `unknown` casts are fine for the r128 typing gaps.
-- Keep the hot-path performance patterns as they are: reused scratch vectors and typed arrays, `Float32Array` collider arrays, no allocating closures added per frame. Do not convert the `put()` matrix push to `THREE.Matrix4` calls.
-- Keep the helpful comments and section headers from the original as JSDoc or comments in the new modules.
+From now on this is **the only font in Mimblumi**:
+1. Replace `--font-text` in `:root` with a single variable, `--font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;`. Remove "Avenir Next".
+2. The `body`, the credit, the loading label (if any), "Press to start", the `#fail` note and **every future text element** must use `font-family: var(--font)`. Also fix the inline `font:14px -apple-system,BlinkMacSystemFont,sans-serif` in the first `<style>` on line 1 so it uses the same stack.
+3. Credit styling must match Alva exactly: weight 400, `letter-spacing: 0.34em`, `padding-left: 0.34em` (balances the trailing spacing), `font-size: clamp(13px, 2.1vh, 17px)`, colour `#d4d4d4`, centred, `bottom: max(calc(env(safe-area-inset-bottom) + 7vh), 9vh)`.
+4. Add a short comment at the top of the style block stating the rule: *"One font for the whole game: var(--font). Never add another font-family."*
 
 ---
 
-## 3. Build and GitHub Pages deployment
+## Assets
 
-- `package.json` scripts: `dev` (vite), `build` (`tsc --noEmit && vite build`), `preview` (vite preview), `typecheck`.
-- `vite.config.ts`: `base: '/mimblumi/'` so the asset URLs work under the project-pages path. Output to `dist/`.
-- Bundle three from npm. The deployed site must not depend on cdnjs any more.
-- Add `.github/workflows/deploy.yml` using the official Pages actions: on push to the default branch (and `workflow_dispatch`), set `permissions: pages: write, id-token: write, contents: read`, `concurrency: pages`, run `actions/checkout` → `actions/setup-node` (LTS, npm cache) → `npm ci` → `npm run build` → `actions/configure-pages` → `actions/upload-pages-artifact` (path `dist`) → `actions/deploy-pages`.
-- In the README and in your final message, tell me that I need to switch **Settings → Pages → Build and deployment → Source** from "Deploy from a branch" to **"GitHub Actions"**. Otherwise Pages will keep serving the raw TypeScript `index.html` from the root.
-- Commit `package-lock.json`.
+Add the two logos to the repo root:
+- `hs.jpg`: the hiyroscript logo (white bear with glasses on a blue background). This is the same file Alva uses as `./hs.jpg`.
+- `mimblumi.png`: the game logo (a light-grey hand-drawn "M" on a bright blue `#0399FF` square).
 
----
-
-## 4. Verifying that it is identical (required before you call it done)
-
-1. `npm run build` passes with zero TypeScript errors and zero warnings you have not dealt with.
-2. **Determinism check:** write a small throwaway Node/Vitest script (it does not need to be committed) that imports the pure modules (`random`, `noise`, `fields`) and compares a grid of `Fields.height`, `Fields.cell`, `Fields.ground` and `Fields.cellColor` samples, plus `hashInt` values, against the same functions pulled out of the original `index.html`. They must match exactly (`===`).
-3. If you can, do the same for `makeChunk(0,0)`, `makeChunk(3,-2)` and `makeChunk(-5,7)`. Compare the terrain vertex/colour arrays, the per-pool instance matrices and colours, and the colliders, by hashing the typed arrays. Mock or stub only what needs a WebGL context; `BufferGeometry`/`InstancedMesh` construction works headless.
-4. Run `npm run preview` and compare it side by side with the old `index.html`: the spawn glade, tree types and placement, colours, shadows (including no shimmer while walking), fog, the see-through canopy window around the player, grass/flower wind sway, walk and run animation, drag joystick, pinch and wheel zoom limits (12–34), keyboard plus Shift, portrait FOV widening, and the resolution drop on slow devices.
-5. Check that the built `dist/index.html` loads correctly when served from a `/mimblumi/` sub-path.
+If you cannot get the binary files, copy `hs.jpg` from the Alva repo. Leave a clear TODO for `mimblumi.png` and do **not** commit a placeholder image.
 
 ---
 
-## 5. Deliverables
+## Full sequence (in order)
 
-- One branch (for example `refactor/typescript-modules`) with clear commits (scaffold → move pure math → world/assets → render → player/camera/input → loop/main → CI/deploy → README), and a PR to the default branch that describes the structure and how determinism was verified.
-- Delete the old monolithic code from `index.html` (it becomes the Vite shell). Do not keep two copies of the game.
-- A short summary of any place where you had to deviate from a literal port, and why.
+### 0. Boot: black and gated on images
+- Add a full-screen `#splash` overlay above `#stage` (`position: fixed; inset: 0; z-index` above everything; background `#000`). Before anything runs, set `html`/`body` to black so the page never flashes the haze colour.
+- **Like Alva, the splash does not start until ALL images have loaded AND decoded.** Load both images with `new Image()`, wait for `onload`, then `await img.decode()`. Only after both succeed does anything appear on screen. Reuse the loaded `<img>` elements; never swap `src` or request them again.
+- If either image fails to load or decode, skip the logo animations entirely: no broken images, no partial artwork. Log `console.error('[Mimblumi] Splash unavailable; skipping the logos.', err)` and go straight to step 3 (loading).
+
+### 1. hiyroscript logo + credit (copy Alva exactly)
+- Show `hs.jpg` centred, `max-width: min(70%, 640px); max-height: 65%; object-fit: contain; border-radius: clamp(12px, 4vmin, 40px)`.
+- Show "a game by hiyroscript" under it (the credit described above). It fades in and out **together with** the logo, but it does **not** zoom.
+- Animation (Web Animations API, same as Alva): one opacity track `0 → 1` (fadeIn) → hold → `1 → 0` (fadeOut) with `ease-in-out`, plus a separate, continuous linear `transform: scale(0.96) → scale(1.04)` across the whole duration.
+- Timings: copy Alva's `CONFIG.splash` into a `CFG.splash` object: `fadeIn: 900, hold: 1600, fadeOut: 800, zoomFrom: 0.96, zoomTo: 1.04, betweenImages: 220, finalBlackHold: 200, reducedMotionHold: 1000`.
+- Then 220 ms of pure black.
+
+### 2. Mimblumi logo
+- Same fade + zoom as step 1, but with no credit text. Size: `max-width: min(52%, 300px); max-height: 52%` (matches Alva's game logo). Give it a small rounded radius so the blue square looks intentional.
+- **Change from Alva:** the Mimblumi logo **does not fade out**. When its fade-in + hold finish, it stays on screen at full opacity, centred, at its final scale (freeze the zoom at the end value with `fill: 'forwards'`, or hold it static at scale 1). It stays as the title logo for steps 3 and 4.
+
+### 3. Loading bar (appears when the logo animation ends)
+- Fade in a thin, rounded loading bar centred **under the logo** (≈ `min(60vw, 260px)` wide, 4–6 px tall). Track: white at ~20 % opacity; fill: `#d4d4d4` or white. The fill width shows real progress.
+- **Wire it to real work.** Restructure the boot so the heavy work is a set of tracked tasks, not something that runs blindly before the splash. At minimum:
+  - checking that Three.js / WebGL is available,
+  - building the player model (`Player.build()`),
+  - generating the initial chunk ring (`World.plan` + the `World.step()` loop). **Run the steps in batches across animation frames** so the bar can repaint instead of freezing the page,
+  - `World.refill()`, the first `Rig.resize()` / `Rig.snap()`, and compiling shaders (`renderer.compile(scene, camera)` or one hidden render) so the first visible frame doesn't stutter.
+- Make it a small reusable loader, e.g. `Loader.add(label, weight, asyncFn)` + `Loader.run(onProgress)`, so any future model, texture, sound or other asset can be added in one line and automatically counts toward the bar. Ease the bar toward its target (no jumps) and never let it go backwards.
+- The world can start loading as soon as the splash begins (in parallel with the logos) for speed, **but the bar only becomes visible after the Mimblumi logo's fade-in + hold ends**. If loading finished earlier, show the bar fill quickly to 100 % and continue. Do not skip the bar step completely: show it for at least ~300 ms so it doesn't flicker.
+- If WebGL / Three.js is missing, stop here, hide the splash and show the existing `#fail` note (now in `var(--font)`).
+
+### 4. "Press to start"
+- When loading reaches 100 %, cross-fade the loading bar out and **replace it, in the same spot under the logo**, with the text **"Press to start"**: `var(--font)`, same letter-spacing style as the credit, `#d4d4d4`, centred.
+- It flashes: a gentle, infinite opacity pulse (e.g. `1 → 0.25 → 1` over ~1.4 s, ease-in-out). It should not be harsh blinking.
+- The whole screen is the button: a single `pointerdown` anywhere (mouse, touch, pen) or **any key** (keyboard) starts the game. Accept input only once (ignore repeats and remove the listeners). Make sure this tap does **not** also leak into `Input` as a drag or move for the player: either `Input.init(stage)` runs only after the intro has finished, or the event is stopped from reaching the stage.
+- Accessibility: give the overlay `role="button"`, `tabindex="0"` and `aria-label="Press to start"`, and focus it.
+
+### 5. Colour transition into the game
+After the press:
+1. "Press to start" and the Mimblumi logo fade out (~400 ms).
+2. The splash background animates smoothly through this exact order, each colour **cross-fading** into the next (no hard cuts):
+   **black `#000000` → blue `#0399FF` (the Mimblumi logo blue) → green → brown → white `#FFFFFF`**
+   - Pick a soft, natural green and brown that suit the world's palette (e.g. green ≈ `#5E9E4A`, brown ≈ `#7A5636`). Put all colours in `CFG.splash.transitionColors` so they're easy to change.
+   - Implement it as one Web Animation on `background-color` with evenly spaced keyframes and `ease-in-out`, about 2.4–3 s total (`CFG.splash.transitionMs`).
+3. On white, the game must already be running underneath (start the `requestAnimationFrame(frame)` loop just before or at the white keyframe). Then the white overlay **fades its opacity to 0** (~900 ms), revealing the world.
+4. Remove the splash from the DOM, put the page background back to `var(--haze)`, then call `Input.init(stage)` and attach the resize listeners (if not already done).
+
+---
+
+## Reduced motion
+If `matchMedia('(prefers-reduced-motion: reduce)')` matches (same as Alva):
+- Logos appear without zoom and are each held for `reducedMotionHold` (1000 ms) before moving on.
+- "Press to start" doesn't pulse (static at full opacity).
+- The colour transition becomes a single short cross-fade (or a much shorter run through the colours) followed by the fade into the game.
+
+## Hot reload (`window.claude.hot`)
+Keep the existing `hot.snapshot` / `hot.ready` / `hot.data` behaviour. On a **hot reload with saved data**, skip the whole intro and start straight into the world at the saved position/zoom, so development isn't slowed down. The full intro only runs on a normal cold start.
+
+## Robustness
+- Use one run token and cancel all animations, timers and listeners together, like Alva's `run` / `active()` / `clear()`, so nothing leaks or fires twice.
+- Errors inside a step must never leave the player stuck on a black screen. Always fall through to the game or to `#fail`.
+- No layout shift: the logo stays exactly centred while the bar and "Press to start" appear under it. Respect safe-area insets the way Alva does (symmetric padding `max(24px, env(safe-area-inset-*))`).
+- Works on portrait mobile and desktop, in both light and dark system themes.
+- Don't touch the world generation, rendering, shaders or gameplay logic beyond restructuring `start()` into loader tasks.
+
+## Done when
+- [ ] Cold load: black → hs.jpg + "a game by hiyroscript" (fade + zoom, identical to Alva) → black gap → Mimblumi logo fades/zooms in and stays.
+- [ ] Nothing appears until both images are loaded and decoded. If an image fails, the logos are skipped cleanly.
+- [ ] The loading bar appears under the logo, reflects real loading progress and never freezes the page.
+- [ ] "Press to start" replaces the bar in the same spot, pulses, and starts on click, tap or key, once only.
+- [ ] Background goes black → blue → green → brown → white with smooth cross-fades, then white fades away to show the running game.
+- [ ] The tap that starts the game doesn't move the player.
+- [ ] `var(--font)` (Alva's stack) is the only font anywhere in the file. "Avenir Next" and `BlinkMacSystemFont`-only stacks are gone.
+- [ ] Reduced motion and hot reload behave as described above.
+- [ ] Commit with a clear message, e.g. `Add Alva-style splash, loader, press-to-start and colour intro`.
