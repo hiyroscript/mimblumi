@@ -1,126 +1,103 @@
-# Task: Rebrand Mimblumi → Mavooli, replace the colour transition, and add a Home Screen
+# Task: Add an automatic itch.io build to the `moo` game, modelled on Alva's
 
-You are working in the `moo` repository (TypeScript + Vite + three.js **r128**, deployed to GitHub Pages). The game is currently called **Mimblumi**. Read `README.md`, `src/main.ts`, `src/intro/splash.ts`, `src/intro/run.ts`, `src/config.ts`, `src/style.css`, `src/dom.ts`, `src/loop.ts`, `src/camera/rig.ts`, `src/world/worldManager.ts`, `src/world/fields.ts` and `src/config.ts` before changing anything. Respect every rule in the README's "Things to keep in mind" section (one font `var(--font)`, set-up order, three.js pinned to r128, random-draw order is the world, start-up work goes through `Loader`).
+You are working in two repositories by hiyroscript:
 
-Do the work in three parts, in this order. After each part run `npm run typecheck` and `npm run build` and fix every error before moving on.
+- **`hiyroscript/moo`** — the game to change. It was called **Mimblumi** and has since been renamed **Mavooli** (package name `mavooli`, logo `mavooli.png`). Whenever this task says "the game", it means this one. Use the current name, **Mavooli**, in everything you create (file names, ZIP name, workflow name, docs), and do not bring back "Mimblumi" anywhere.
+- **`hiyroscript/alva`** — the reference. It already has an automatic itch.io build. **Read it, do not change it.**
 
----
-
-## Part 1 — Full rebrand to "Mavooli"
-
-Replace every user-facing and code-facing occurrence of the old name. Search the whole repo (case-insensitive) for `mimblumi` and change each one:
-
-- `index.html`: `<title>Mavooli</title>`; the logo preload `href`.
-- `package.json` / `package-lock.json`: `"name": "mavooli"` (both name fields in the lock file); update `description` if it names the game.
-- `vite.config.ts`: `base` from `/mimblumi/` to `/mavooli/` (the GitHub repo/Pages path will be renamed to match — mention this in the README).
-- `src/intro/splash.ts`: the logo import, `alt` text (`'Mavooli'`), the header comment, and the `[Mimblumi]` console prefixes → `[Mavooli]`.
-- `src/images.d.ts` and any other import of the logo.
-- Rename the logo file `mimblumi.png` → `mavooli.png` (use `git mv`). Keep the current image as a placeholder and leave a clear `TODO` in the README that the Mavooli logo art, `favicon.ico` and `apple-touch-icon.png` must be replaced with new artwork. Do not try to generate a new logo.
-- `README.md`: title, live URL (`https://hiyroscript.github.io/mavooli/`), dev/preview URLs, file tree, and every prose mention. Rewrite "The intro" section to describe the new flow from Part 2 and add a "The Home Screen" section for Part 3.
-- `.github/workflows/deploy.yml`: any name/path references.
-- Comments, CSS class names, ids, localStorage/sessionStorage keys, constants or log messages that contain the old name.
-
-When done, `grep -rni mimblumi . --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist` must return nothing.
+The goal: every push to `main` in `moo` (and a manual "Run workflow") builds an itch.io-ready HTML5 ZIP of Mavooli, validates it, and keeps it as a downloadable artifact on the GitHub Actions run, exactly like Alva does, so the owner can upload it to itch.io where players will play it in the browser. The existing GitHub Pages deployment must keep working unchanged.
 
 ---
 
-## Part 2 — New "Press to start" transition
+## Step 0 — Read before changing anything
 
-Keep steps 0–4 of the intro exactly as they are (hiyroscript logo + "a game by hiyroscript", black gap, Mavooli logo, loading bar, pulsing "Press to start").
+In **`alva`**, read all of these and understand how its itch.io release works:
 
-Replace step 5 (`playTransition` in `src/intro/splash.ts`):
+- `.github/workflows/itch-release.yml` — the workflow to mirror (push to `main` + `workflow_dispatch`, `permissions: contents: read`, Node 22 with npm cache, `npm ci`, tests, `npm run build:itch`, `npm run verify:itch`, then `actions/upload-artifact@v4` with `name: alva-itch-${{ github.sha }}`, `path: dist/alva-itch.zip`, `if-no-files-found: error`, `compression-level: 0`). It never uploads to itch.io itself.
+- `docs/development/itch-release.md` — the full explanation: what the build does, the validation, testing locally, and the "Publishing on itch.io" section (first upload, embed options, updating, what is different inside itch.io's iframe).
+- `tools/itch/build.mjs`, `tools/itch/release.mjs`, `tools/itch/validate.mjs`, `tools/itch/zip.mjs`, `tools/itch/hosts.mjs`, `tools/itch/equivalence.mjs` — the build, the shared rules, the validator, the deterministic ZIP writer, the "no other host" check, and the equivalence check.
+- `package.json` (`build:itch`, `verify:itch` scripts), the itch.io section of `README.md` (around "itch.io (at most 1,000 files…)"), and the `itch` job in `.github/workflows/release.yml` (optional `butler` push using `BUTLER_API_KEY` secret + `ITCH_PROJECT` variable).
 
-- **Remove** the colour run entirely (black → blue → green → brown → white). Delete `transitionColors`, `transitionMs`, `reducedTransitionMs` and `finalBlackHold` from `CFG.splash` if they are no longer used, and remove their mentions from the README.
-- On the press: stop the pulse, then the **screen fades in to solid white** (`#FFFFFF`) over the logo and prompt — a full-screen white layer going from opacity 0 → 1, ease-in-out. Add `CFG.splash.whiteFadeIn` (≈ 600 ms).
-- Hold white briefly (`CFG.splash.whiteHold`, ≈ 150 ms). While it is white: remove the logo/prompt, mount and prepare the Home Screen (Part 3), start the home background world, and wait two frames (`run.frames2()`) so its first frame is drawn.
-- Then **fade the white out** (`CFG.splash.whiteFadeOut`, ≈ 700 ms, ease-in-out) to reveal the **Home Screen**, not the game.
-- With `prefers-reduced-motion: reduce`, use shorter fades (≈ 250 ms each) and no hold.
-- Every timer/animation/listener must still go through the `Run` so `clear()` stops everything. The intro must still never leave the page on a black or white screen: if anything fails, fall through to the Home Screen (or to `#fail` if WebGL is unavailable).
-- The hot-reload `quickStart` path (saved position) should still skip the intro and go straight into the game.
+In **`moo`**, read: `README.md` (especially "Deploying" and "Things to keep in mind when changing it"), `package.json`, `vite.config.ts`, `index.html`, `.github/workflows/deploy.yml`, `.gitignore`, `src/main.ts`, `src/intro/splash.ts`, `src/home/home.ts`, `src/input/input.ts`, `src/camera/rig.ts`, `src/style.css`, and grep `src/` for `localStorage`, `sessionStorage`, `fetch(`, `new URL`, `import.meta`, absolute paths starting with `/`, and any `http`/`https` URL.
 
-`IntroHooks` changes: replace `startGame()` with something like `showHome()` that is called under the white. The game loop itself only starts gameplay when a mode is picked on the Home Screen.
+**Key difference to keep in mind:** Alva is unbundled plain JS (2,059 files) and needs a custom esbuild bundler to get under itch.io's 1,000-file limit. Mavooli already builds with **Vite** into `dist/` as a handful of files. So do **not** port Alva's bundler or its fighter-frame packing or its simulation probe. Port the *shape* of Alva's release — a dedicated build command, strict validation, a deterministic ZIP with `index.html` at its root, a CI workflow that keeps the ZIP as an artifact, optional butler push, and thorough docs — on top of Vite.
 
 ---
 
-## Part 3 — The Home Screen
+## Step 1 — An itch.io build of the game (relative paths)
 
-### Background: a random world each time
-- Every time the Home Screen opens, the background is a **freshly generated, random world**: pick a new random seed (e.g. `crypto.getRandomValues` or `Math.random`) instead of `CFG.seed`. The seed must flow through the existing seeded noise/rng code (`math/noise.ts`, `math/random.ts`, `world/fields.ts`) — add a function such as `setWorldSeed(seed)` that rebuilds the noise fields, and call it before chunks are generated. Do not reorder existing `rng()` calls.
-- The **camera slowly scrolls over the world** on its own: no player control, no player model visible (hide the player or don't place it), a smooth constant drift in one direction at a pleasant height/angle (add `CFG.home.scrollSpeed`, `CFG.home.cameraZoom`, `CFG.home.direction`; a gentle slow yaw sway is welcome). Chunks must keep streaming in ahead of the camera through `World.plan()` / `World.step()` the same way they do for the player, without hitches (respect `CHUNK_BATCH_MS`).
-- The world under the Home Screen must render with the existing renderer, lights, fog and materials — same look as the game.
-- `Input` must **not** be listening while the Home Screen is up; taps go to the cards only.
+GitHub Pages serves Mavooli from `/moo/` (`base: '/moo/'` in `vite.config.ts`), and `index.html` uses root-absolute paths (`/favicon.ico`, `/hs.jpg`, `/mavooli.png`, `/src/main.ts`…). itch.io serves the game inside an `<iframe>` from an unpredictable sub-path on `html-classic.itch.zone`, so the itch.io build must use **relative** URLs everywhere.
 
-### The three cards
-- Three cards placed **horizontally in a row**, centred on screen, separated by a **small gap** (≈ 12–16 px, use `clamp()`).
-- Order and content (left → right):
-  1. **"Play with friends!"** — a **globe icon** (represents online) at the **top centre** of the card. This card is **unavailable**: online is not set up yet. Show it visibly disabled (lower opacity / desaturated, `cursor: not-allowed`, `aria-disabled="true"`), with a small secondary line "Unavailable right now". Tapping it does nothing (optionally a tiny shake or a short "Coming soon" toast — no navigation).
-  2. **"Survival"** — a **play icon** (▶ triangle) at the top centre. This card is the **middle one and must be bigger** than the other two (e.g. ~1.2× width and height; side cards vertically centred against it).
-  3. **"Creative mode"** — a **tool icon** (🛠️ hammer + wrench) at the top centre.
-- Draw the three icons as **inline SVG** (stroke icons, white, ~28–40 px, scaled up slightly on the middle card) so they look identical on every platform — do not rely on emoji glyphs.
-- Labels use `font-family: var(--font)`, white text, centred under the icon.
-- **No rounded corners**: `border-radius: 0` on the cards (and on anything inside them that shows an edge).
-- **Glass look copied from the Alva repo's dialogs** (`alva/css/base.css` tokens and `.glass` / `.glass--panel` in `alva/css/battle.css`). Port these exact values into `src/style.css` as CSS custom properties and classes:
-  ```css
-  --glass-fill: rgba(10, 11, 13, 0.64);
-  --glass-fill-panel: rgba(10, 11, 13, 0.86);
-  --glass-fill-blur: rgba(10, 11, 13, 0.7);
-  --glass-edge: rgba(255, 255, 255, 0.14);
-  --glass-sheen: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02) 45%, rgba(255,255,255,0) 75%);
-  --glass-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 16px rgba(0,0,0,0.22);
+- Make `vite.config.ts` choose `base` by mode: keep `'/moo/'` for the default/Pages build, and use `'./'` for a new `itch` mode (e.g. `vite build --mode itch`), writing to `dist/itch/` instead of `dist/`. Keep every other existing option (`cssMinify: false`, `chunkSizeWarningLimit: 700`, comments). The Pages build output must stay byte-for-byte what it is today.
+- Make sure every asset the game uses ends up relative in the itch build: images imported through TypeScript (`mavooli.png`, `hs.jpg` via `images.d.ts`), the favicon, the apple-touch-icon, the preloads. Files referenced only from `index.html` with absolute `/…` paths must either be moved to `public/`, imported, or otherwise resolved so they are emitted with relative URLs. Verify in the built `dist/itch/index.html` that **no** `src`/`href` starts with `/` or with `http`.
+- Check the code for anything that assumes the `/moo/` path or the top-level window (e.g. `location.pathname`, hot-reload position saving, `history`, fullscreen, pointer lock, focus). It must run inside a cross-origin iframe. Wrap `localStorage`/`sessionStorage` access in try/catch if it is not already, since itch.io's iframe may block third-party storage.
+- Keyboard focus: on itch.io keys only reach the game after it is focused. Make sure a click/tap on the canvas (and the intro's "Press to start") focuses the game so WASD/arrow keys work immediately, and that arrow keys and Space do not scroll the itch.io page (`preventDefault` where the game uses them).
+- Respect all of moo's README rules: one font `var(--font)`, three.js pinned to r128, set-up order in `main.ts`, the order of random draws is the world (do not add, remove or reorder any `rng()` call), start-up work goes through `Loader`.
 
-  .glass--panel {
-    background: var(--glass-sheen), var(--glass-fill-panel);
-    border: 1px solid var(--glass-edge);
-    box-shadow: var(--glass-shadow), 0 12px 32px rgba(0,0,0,0.35);
-  }
-  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-    .glass--panel {
-      background: var(--glass-sheen), var(--glass-fill-blur);
-      -webkit-backdrop-filter: blur(12px) saturate(1.1);
-      backdrop-filter: blur(12px) saturate(1.1);
-    }
-  }
-  ```
-  (Check Alva's `--shadow-lg` value and use it instead of the placeholder shadow above.) The world must be visible, blurred, through the cards.
-- Hover/focus (enabled cards only): slight lift (`translateY(-4px)`) and a brighter edge (`rgba(255,255,255,0.28)`), with a visible keyboard focus ring. Cards are `<button>` elements, reachable with Tab / arrow keys, activated with Enter/Space.
+## Step 2 — Tools: `tools/itch/` in moo
 
-### Entrance animation: falling from the top
-- When the white fades out, the three cards **fall in from above the top of the screen** to their resting positions.
-- They all fall **together**, with only a **tiny stagger** between them (≈ 60–80 ms; left, then middle, then right). Add `CFG.home.cardFallMs` (≈ 650 ms) and `CFG.home.cardStagger` (≈ 70 ms).
-- Use a falling easing with a small settle/bounce at the end (e.g. `cubic-bezier(0.22, 1.2, 0.36, 1)` or keyframes that overshoot slightly and settle), plus opacity 0 → 1 over the first part.
-- Start the fall so it lines up with the white fading out (cards can begin while the white is ~halfway gone).
-- Use `Element.animate` through the `Run` (or an equivalent cancellable helper) so it is cleaned up.
-- With reduced motion: no fall — a simple quick fade-in.
+Create Node ESM scripts (no new runtime dependencies; dev tools only, Node 22+, built-in modules where possible), following Alva's structure and style:
 
-### Layout / responsiveness
-- Must fit and look good on phones in **portrait and landscape**, tablets and desktop. Respect safe areas (`env(safe-area-inset-*)`).
-- In very narrow portrait screens, keep the three cards in one row but scale them down with `clamp()`/`min()`; never let them overflow or overlap.
-- Cards should feel substantial: roughly portrait-shaped (taller than wide).
+- **`tools/itch/build.mjs`** — empties `dist/itch/`, runs the type check and the Vite itch build, validates the folder, and only if valid writes **`dist/mavooli-itch.zip`** (with `index.html` at the ZIP root, no enclosing folder), validates the archive against the folder, and prints a report (files, sizes, totals against itch.io's limits, archive size). Any problem → exit code 1 and no archive left behind. Ends by printing `OK`.
+- **`tools/itch/zip.mjs`** — a deterministic ZIP writer adapted from Alva's (fixed entry order, fixed timestamps, CRC-32), so the same commit always makes the same ZIP. Reuse Alva's code where it fits.
+- **`tools/itch/validate.mjs`** — runnable on its own (validates an existing `dist/`), checking, as Alva does:
+  - itch.io limits: fewer than 1,000 files (warn above 950), ≤ 500 MB total, ≤ 200 MB per file, paths ≤ 240 characters, no two names differing only in case, plain characters only.
+  - `index.html` at the root; every local URL referenced by `index.html`, the CSS and the JS bundle exists in the folder under its exact name (case-sensitive), and none is root-absolute.
+  - Nothing development-only: no `src/`, `tools/`, `.github/`, `node_modules/`, source maps, `.ts` files, Markdown, `package.json`, `max`, or `.git`.
+  - No other host (adapt `hosts.mjs`): no script, style, image, font or fetch from any `http(s)://`/`ws(s)://` address; only player-opened links, if any, are allowed and must be listed explicitly.
+  - The archive: every entry intact (CRC-32), exactly the folder's files and bytes, `index.html` at its root, no unsafe paths (`..`, absolute, backslashes).
+- **`tools/itch/verify.mjs`** (the equivalent of Alva's `verify:itch`) — serves `dist/itch/` from a tiny built-in Node static server **under a nested, unrelated sub-path** (to imitate itch.io) and checks that every file the page references is served with HTTP 200 and the right content type. If a headless browser is available in CI without new heavy dependencies, also load the page inside a cross-origin `<iframe>` and assert no console errors; otherwise keep it to the HTTP-level check and say so in the docs. Alva's simulation-equivalence approach does not apply to Mavooli and must not be ported.
 
-### What the cards do
-- **Survival**: fade the Home Screen out (cards rise/fade away), then start the existing game exactly as it played before (player placed, `Input.init(stage)`, normal camera follow). Use the normal world seed behaviour (`CFG.seed`, or keep the random one — choose `CFG.seed` and leave a comment so it's easy to change).
-- **Creative mode**: for now, start the same game as Survival but pass a `mode: 'creative'` flag through to the game state (store it somewhere like `src/game/mode.ts`) so creative-only features can be added later. Leave a clear TODO.
-- **Play with friends!**: disabled (see above).
+Add to `package.json` scripts: `"build:itch": "node tools/itch/build.mjs"` and `"verify:itch": "node tools/itch/verify.mjs"`. Keep `dev`, `build`, `preview`, `typecheck` unchanged. If you add a test runner, use `node --test` like Alva with tests under `tests/` (e.g. a test that the itch `index.html` has only relative URLs and that `zip.mjs` round-trips), and run them in CI.
 
-### Code organisation
-- New folder `src/home/` with:
-  - `home.ts` — builds the DOM for the Home Screen, plays the card entrance, handles card selection, returns a promise for the chosen mode.
-  - `flyover.ts` — the auto-scrolling camera over the random world (start/stop, per-frame update called from `loop.ts`).
-  - `icons.ts` — the three inline SVG icons.
-- Add a `#home` container to `index.html` (and to `src/dom.ts`).
-- Update `src/loop.ts` so the frame loop can run in two states: `home` (flyover camera, no player input) and `game` (current behaviour).
-- Update the README file tree and descriptions.
+## Step 3 — The workflow: `.github/workflows/itch-release.yml` in moo
 
----
+Mirror Alva's file, with a header comment in the same style explaining what it does and that it never uploads anything by itself:
 
-## Acceptance checklist
-- [ ] No "Mimblumi" anywhere in the repo; title, logo alt text, URLs and package name say Mavooli; `base` is `/mavooli/`.
-- [ ] Intro logos, loading bar and "Press to start" unchanged.
-- [ ] Pressing: screen fades to white, then the white fades out to the Home Screen. No coloured sequence.
-- [ ] Home Screen background is a different random world every time, with the camera drifting smoothly across it; no stutter while chunks load.
-- [ ] Three square-cornered Alva-style glass cards in a row with a small gap, middle (Survival) larger, icons (globe / play / tool) at the top centre of each.
-- [ ] Cards fall from the top nearly simultaneously with a tiny stagger.
-- [ ] "Play with friends!" clearly unavailable and does nothing; Survival and Creative mode start the game.
-- [ ] Works with mouse, touch and keyboard; respects reduced motion; works in portrait and landscape.
-- [ ] `npm run typecheck` and `npm run build` pass; no console errors.
-- [ ] Commit with a clear message.
+```yaml
+name: itch.io release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - checkout (same action major version deploy.yml uses)
+      - setup-node, node-version 22, cache: npm
+      - npm ci
+      - node --test   (only if you added tests)
+      - npm run build:itch
+      - npm run verify:itch
+      - actions/upload-artifact@v4:
+          name: mavooli-itch-${{ github.sha }}
+          path: dist/mavooli-itch.zip
+          if-no-files-found: error
+          compression-level: 0
+```
+
+Then add an **optional automatic push to itch.io with butler**, modelled on the `itch` job in Alva's `release.yml`: a second job (`needs: release`) that downloads the artifact, and only if the secret `BUTLER_API_KEY` **and** the repository variable `ITCH_PROJECT` (e.g. `hiyroscript/mavooli`) are set, downloads butler from `https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default`, prints `butler -V`, and runs `butler push dist/mavooli-itch.zip "$ITCH_PROJECT:html" --userversion "<package.json version>-<short sha>"`. When either is missing, emit a `::notice::` saying no upload happened and succeed. Never print the key. Use `concurrency` so two pushes to the channel never overlap.
+
+Do not touch `deploy.yml` beyond what is strictly needed; both workflows run independently on every push to `main`. `dist/` is already in `.gitignore`; keep it that way.
+
+## Step 4 — Documentation
+
+- Create **`docs/itch-release.md`** in moo, modelled on Alva's `docs/development/itch-release.md`, adapted to Mavooli: commands; what the build does, step by step; the output tree (`dist/mavooli-itch.zip`, `dist/itch/…` with real file names and approximate sizes from your build); the validation; testing locally (`python3 -m http.server 8000 --directory dist/itch`, plus a cross-origin iframe test page with `allow="fullscreen"`); getting the ZIP from the Actions run (it arrives wrapped in GitHub's own ZIP — unzip once); setting up butler (create an API key at itch.io → Settings → API keys, store it as the `BUTLER_API_KEY` secret, set `ITCH_PROJECT`); **the first upload** on itch.io (Kind of project: **HTML**; upload the ZIP and tick **This file will be played in the browser**; embed options: viewport **1280 × 720** or **960 × 540**, **Mobile friendly** on, orientation choice that suits a game that also supports portrait, **Fullscreen button** on, **Click to launch** recommended so the game has focus, scrollbars off, SharedArrayBuffer off); updating it; and **what is different inside itch.io's page** (keyboard focus, storage partitioning, WebGL in an iframe, touch drag/pinch not scrolling the page, no `/moo/` path).
+- Update moo's **`README.md`**: a new "itch.io" section after "Deploying" with the two commands, the workflow, where the ZIP is, and a link to `docs/itch-release.md`; add `tools/itch/`, `docs/` and the new workflow to the "How the code is organised" tree; add `build:itch`/`verify:itch` to the scripts table.
+
+## Step 5 — Check your work
+
+1. `npm ci`, `npm run typecheck`, `npm run build` — the Pages build still works and `dist/` is unchanged in content from before your change (compare file lists and hashes).
+2. `npm run build:itch` ends with `OK` and produces `dist/mavooli-itch.zip`; run it twice and confirm the two ZIPs are byte-identical.
+3. `npm run verify:itch` passes. Unzip the ZIP into a fresh folder and confirm `index.html` is at the root and every URL in it is relative.
+4. Serve `dist/itch/` locally under a nested path and inside a cross-origin iframe; confirm the intro, the loading bar, "Press to start", the Home Screen, Survival and Creative modes, walking with keyboard and drag, zoom with wheel and pinch, and no console errors.
+5. Plant a failure on purpose (an absolute `/foo.png` in the itch `index.html`, an extra `.map` file, an external `https://` script) and confirm validation fails with a clear message and no ZIP; then remove it.
+6. Lint the workflow YAML (e.g. `actionlint` if available) and reason through both jobs, including the butler job's skip path.
+
+## Deliverables
+
+Commit on a new branch (e.g. `itch-release`) in **moo** only, with clear commit messages, and open a pull request against `main` whose description lists: the files added/changed, the one-time itch.io setup the owner must do (create the HTML project, optionally add `BUTLER_API_KEY` + `ITCH_PROJECT`), how to get the ZIP from a run, and anything you could not verify (for example real-device testing on itch.io). Do not change anything in `alva`.
