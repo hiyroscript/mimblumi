@@ -1,6 +1,7 @@
 # The itch.io release, built and checked on every push to main
 # (docs/itch-release.md): the tests, the release built with Vite's itch mode
-# and validated, then served under a nested path and played in a headless
+# and validated, compared with the GitHub Pages build (the same game but for
+# its URLs), then served under a nested path and played in a headless
 # Chrome inside a cross-origin iframe, and the ZIP kept on the run's page,
 # ready for the owner to upload to itch.io by hand. "Run workflow" (Actions
 # tab) runs it on any branch.
@@ -44,8 +45,9 @@ jobs:
       - name: Build and validate the release
         run: npm run build:itch
 
-      # The runner's own Google Chrome, driven over its DevTools pipe.
-      - name: Serve it under a nested path and play it in a cross-origin iframe
+      # The GitHub Pages build made beside it to compare with, then the
+      # runner's own Google Chrome, driven over its DevTools pipe.
+      - name: Compare it with the Pages build, then serve it under a nested path and play it in a cross-origin iframe
         run: npm run verify:itch
 
       # package.json's, MAJOR.MINOR.PATCH (tools/itch/release.mjs).
