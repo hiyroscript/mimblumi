@@ -1,19 +1,21 @@
+/* One font for the whole game: var(--font). Never add another font-family. */
+
 /* Base page reset. */
-:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}
+:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px var(--font);background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}
 
 /* Layout: one full-bleed canvas. No chrome, no controls; the world is the interface. */
 :root {
   --haze: #cdd2bd;
   --ink: #2c3327;
   --note-bg: #e4e6d6;
-  --font-text: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color-scheme: light;
 }
 html, body { height: 100%; }
 body {
   background: var(--haze);
   color: var(--ink);
-  font-family: var(--font-text);
+  font-family: var(--font);
   overflow: hidden;
   overscroll-behavior: none;
   touch-action: none;
@@ -22,6 +24,8 @@ body {
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
 }
+/* Form controls do not inherit fonts by default; make any future one follow the rule above. */
+button, input, select, textarea { font: inherit; }
 #stage { position: fixed; inset: 0; touch-action: none; cursor: grab; }
 #stage:active { cursor: grabbing; }
 #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
@@ -31,5 +35,105 @@ body {
   padding-block: 24px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
-  background: var(--note-bg); font-size: 1rem; line-height: 1.5;
+  background: var(--note-bg); font-family: var(--font); font-size: 1rem; line-height: 1.5;
+}
+
+/* ------------------------------------------------------------
+   Intro (src/intro/splash.ts). Logo sizes, credit and safe-area padding match Alva's css/splash.css.
+   ------------------------------------------------------------ */
+
+/* Black from the very first paint, so the haze never flashes before the splash. Removed when the intro ends. */
+html.intro, html.intro body { background: #000; }
+
+#splash {
+  position: fixed; inset: 0; z-index: 100;
+  display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center;
+  /* Symmetric, so the logo sits in the true middle of the screen whatever the notch or home bar. */
+  padding: max(24px, env(safe-area-inset-top, 0px), env(safe-area-inset-bottom, 0px))
+           max(24px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+  background: #000;
+  color: #d4d4d4;
+  font-family: var(--font);
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+  outline: none;
+  container-type: size;
+  /* The Mimblumi logo's side, the same as max-width: min(52%, 300px); max-height: 52% on a square image.
+     It is a variable because the loading bar and "Press to start" are placed from it. */
+  --game-logo: min(52vw, 300px, 52vh);
+  --under-gap: clamp(14px, 3.2vh, 30px);
+  --text-size: clamp(13px, 2.1vh, 17px);
+}
+@supports (width: 1cqw) {
+  #splash { --game-logo: min(52cqw, 300px, 52cqh); }
+}
+#splash[role="button"] { cursor: pointer; }
+
+.splash-logo {
+  grid-area: 1 / 1;
+  display: block;
+  object-fit: contain;
+  opacity: 0;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  will-change: opacity, transform;
+}
+.splash-studio {
+  max-width: min(70%, 640px);
+  max-height: 65%;
+  border-radius: clamp(12px, 4vmin, 40px);
+}
+.splash-game {
+  width: var(--game-logo);
+  height: var(--game-logo);
+  max-width: none;
+  border-radius: clamp(10px, 3vmin, 22px);
+}
+
+/* Credit and "Press to start" share one text style. */
+.splash-credit, .splash-prompt {
+  margin: 0;
+  font-family: var(--font);
+  font-weight: 400;
+  font-size: var(--text-size);
+  line-height: 1.2;
+  letter-spacing: 0.34em;
+  padding-left: 0.34em;          /* balances the spacing after the last letter, so the text is truly centred */
+  color: #d4d4d4;
+  text-align: center;
+  white-space: nowrap;
+  opacity: 0;
+}
+.splash-credit {
+  position: absolute; left: 0; right: 0;
+  bottom: max(calc(env(safe-area-inset-bottom, 0px) + 7vh), 9vh);
+  pointer-events: none;
+}
+
+/* The spot under the logo that the loading bar and then "Press to start" occupy, one over the other. */
+.splash-under {
+  grid-area: 1 / 1;
+  display: grid; place-items: center;
+  width: 100%; height: 2.4em;
+  font-size: var(--text-size);
+  /* Centred like the logo, then moved down so its top sits one gap below the logo's bottom edge. */
+  transform: translateY(calc(var(--game-logo) / 2 + var(--under-gap) + 50%));
+  pointer-events: none;
+}
+.no-logo .splash-under { transform: none; }
+.splash-under > * { grid-area: 1 / 1; }
+.splash-bar {
+  width: min(60vw, 260px); height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+  opacity: 0;
+}
+.splash-bar-fill {
+  width: 0; height: 100%;
+  border-radius: inherit;
+  background: #d4d4d4;
 }

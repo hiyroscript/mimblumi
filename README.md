@@ -5,6 +5,16 @@ TypeScript and [Vite](https://vite.dev/).
 
 Live at **https://hiyroscript.github.io/mimblumi/**
 
+## The intro
+
+A cold start opens like hiyroscript's other game, Alva: the hiyroscript logo with "a game by hiyroscript",
+a short black gap, then the Mimblumi logo, which stays as the title. A loading bar under it follows the real
+start-up work; when the world is ready it turns into **Press to start**. A click, tap or key press runs the
+screen from black through blue, green and brown to white, and the white fades away to show the world.
+All timings and colours are in `CFG.splash` ([`src/config.ts`](src/config.ts)). With *reduce motion* turned
+on, the logos do not zoom, the prompt does not pulse and the colour run becomes one short fade. A hot reload
+that brings back a saved position skips the intro.
+
 ## Controls
 
 - **Drag anywhere** (mouse or one finger) to walk. Drag further to run.
@@ -46,11 +56,16 @@ repository is renamed, or the site moves to a custom domain or a `<user>.github.
 ## How the code is organised
 
 ```
-index.html                 page shell: #stage (the canvas host) and #fail (the no-WebGL note)
+index.html                 page shell: #stage (the canvas host), #fail (the no-WebGL note), #splash (the intro)
+hs.jpg, mimblumi.png       the hiyroscript and Mimblumi logos shown by the intro
 src/
-├─ main.ts                 boot: set-up in a fixed order, hot-reload hook, start(), error → #fail
-├─ style.css
-├─ dom.ts                  the #stage and #fail elements
+├─ main.ts                 boot: the start-up work as loader tasks, hot-reload hook, intro or quick start, error → #fail
+├─ style.css               every style, including the intro's
+├─ dom.ts                  the #stage, #fail and #splash elements
+├─ boot/loader.ts          Loader: weighted start-up tasks that drive the loading bar
+├─ intro/
+│  ├─ splash.ts            the intro sequence: logos, loading bar, "Press to start", colour transition
+│  └─ run.ts               one run of the intro; clear() stops all its timers, animations and listeners
 ├─ config.ts               CFG (seed, chunk size, speeds, zoom limits, camera yaw), CH, TAU
 ├─ color.ts                rgb() (sRGB hex → linear), mul, mixc, the RGB type
 ├─ math/                   util (clamp, lerp, smoothstep, damp), random (mulberry32, hashInt…), noise (seeded simplex)
@@ -75,6 +90,14 @@ src/
 ```
 
 ### Things to keep in mind when changing it
+
+- **One font for the whole game: `var(--font)`** (`system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+  Arial, sans-serif`, the same stack as Alva). Any new text uses `font-family: var(--font)`; never add another
+  font-family.
+- **New start-up work goes through the loader.** A model, texture or sound that has to be ready before the
+  first frame is one line in `main.ts`, and it counts toward the loading bar on its own:
+  `Loader.add('Birdsong', 2, async () => { ... })`. Long tasks can call the `report(fraction)` they are given
+  so the bar moves while they run.
 
 - **The world is generated from a seed, and the order of random draws is the world.** Every tree, rock,
   flower and grass tuft depends on the exact sequence of `rng()` calls in `render/pools.ts`,
