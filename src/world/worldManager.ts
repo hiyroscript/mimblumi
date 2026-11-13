@@ -4,6 +4,10 @@ import { makeChunk } from './chunk';
 import type { Chunk } from './chunk';
 import { pools } from '../render/pools';
 import { scene } from '../render/renderer';
+import { nextPaint } from '../boot/loader';
+
+/** How long chunk generation may hold the main thread before it lets a frame paint (ms). */
+export const CHUNK_BATCH_MS = 10;
 
 /* ============================================================
    8. CHUNK MANAGER — load ahead of the player, drop what falls behind
@@ -47,6 +51,26 @@ export const World = {
     this.plan(px, pz, dx, dz);
     this.step();
     if (this.dirty && (this.queue.length === 0 || ++this.wait >= 8)) this.refill();
+  },
+  /** Drop every chunk and every pending request, for example after setWorldSeed(). */
+  reset(): void {
+    for (const ch of this.chunks.values()) { scene.remove(ch.mesh); ch.mesh.geometry.dispose(); }
+    this.chunks.clear(); this.queue = []; this.sig = ''; this.wait = 0;
+    this.dirty = true;
+  },
+  /**
+   * Build the whole first ring of chunks around (px, pz): the same plan() and step() calls as a frame,
+   * in batches of at most CHUNK_BATCH_MS with a painted frame between them, so the page stays responsive.
+   * Does not refill the instance pools; call refill() once it resolves.
+   */
+  async build(px: number, pz: number, report?: (fraction: number) => void): Promise<void> {
+    this.plan(px, pz, 0, 0);
+    const total = Math.max(1, this.queue.length);
+    let built = 0, t0 = performance.now();
+    while (this.step()) {
+      if (report) report(++built / total);
+      if (performance.now() - t0 >= CHUNK_BATCH_MS) { await nextPaint(); t0 = performance.now(); }
+    }
   },
   /* Copy every loaded chunk's instances into the shared pools, nearest chunks first. */
   refill(): void {

@@ -1,20 +1,26 @@
 import { CFG } from './config';
 import { clamp } from './math/util';
-import { stage, failNote, splash } from './dom';
+import { stage, failNote, splash, home as homeEl } from './dom';
 import { createRenderer, createScene, renderer, scene, camera } from './render/renderer';
 import { initLights, lightFollow } from './render/lights';
 import { initMaterials } from './render/materials';
 import { buildPools } from './render/pools';
 import { World } from './world/worldManager';
+import { setWorldSeed, randomSeed } from './world/fields';
 import { Player, createPlayer } from './player/player';
 import { Rig } from './camera/rig';
 import { Input } from './input/input';
-import { startLoop } from './loop';
-import { Loader, nextPaint } from './boot/loader';
+import { startLoop, setLoopState, clearCanopyWindow } from './loop';
+import { Loader } from './boot/loader';
 import { playIntro } from './intro/splash';
+import { openHome } from './home/home';
+import type { HomeScreen } from './home/home';
+import { Flyover } from './home/flyover';
+import { Game, setGameMode, isGameMode } from './game/mode';
+import type { GameMode } from './game/mode';
 
-/** What a hot-reload host keeps across reloads: where the player stood and how far the camera was zoomed. */
-interface Saved { x?: number; z?: number; zoom?: number }
+/** What a hot-reload host keeps across reloads: where the player stood, how far the camera was zoomed, and the mode. */
+interface Saved { x?: number; z?: number; zoom?: number; mode?: GameMode }
 
 declare global {
   interface Window {
@@ -34,8 +40,10 @@ class NoWebGL extends Error {
   constructor() { super('WebGL is not available'); this.name = 'NoWebGL'; }
 }
 
-/** How long chunk generation may hold the main thread before it lets a frame paint (ms). */
-const CHUNK_BATCH_MS = 10;
+/** Where the player starts a new game. */
+const START_X = 0.5, START_Z = 0.5;
+/** Where the Home Screen's flyover starts gliding (in its own random world). */
+const HOME_X = 0.5, HOME_Z = 0.5;
 
 /*
  * All the work before the first frame, as loader tasks so the loading bar can follow it.
@@ -43,8 +51,11 @@ const CHUNK_BATCH_MS = 10;
  * instance pools, player, then the first ring of chunks. three.js sorts draws partly by object and
  * material creation order, and the world depends on the order of random draws, so this order is part
  * of what keeps the image identical.
+ *
+ * With `forHome`, the first ring is the Home Screen's: a fresh random world around the flyover's start,
+ * with the player hidden. Otherwise (a hot reload) it is the game's own world around the saved position.
  */
-function addLoadTasks(saved?: Saved | null): void {
+function addLoadTasks(saved: Saved | null | undefined, forHome: boolean): void {
   const sx = saved && isFinite(saved.x as number) ? saved.x as number : 0.5, sz = saved && isFinite(saved.z as number) ? saved.z as number : 0.5;
 
   Loader.add('Renderer', 1, () => {
@@ -59,20 +70,21 @@ function addLoadTasks(saved?: Saved | null): void {
     Player.build();
     if (saved && isFinite(saved.zoom as number)) Rig.want = clamp(saved.zoom as number, CFG.zoomMin, CFG.zoomMax);
     Player.place(sx, sz);
+    if (forHome) Player.show(false);
   });
   /* The first ring of chunks: the same World.step() calls as before, in batches between painted frames. */
   Loader.add('World', 12, async report => {
-    World.plan(sx, sz, 0, 0);
-    const total = Math.max(1, World.queue.length);
-    let built = 0, t0 = performance.now();
-    while (World.step()) {
-      report(++built / total);
-      if (performance.now() - t0 >= CHUNK_BATCH_MS) { await nextPaint(); t0 = performance.now(); }
+    if (forHome) {
+      setWorldSeed(randomSeed());          // a different world every time the Home Screen opens
+      await World.build(HOME_X, HOME_Z, report);
+    } else {
+      await World.build(sx, sz, report);
     }
   });
   Loader.add('Instances', 1, () => {
     World.refill();
-    Rig.resize(); Rig.snap();
+    Rig.resize();
+    if (forHome) Flyover.start(HOME_X, HOME_Z); else Rig.snap();
   });
   /*
    * Compile every shader now, then draw one frame out of sight (under the splash) so the shadow and
@@ -81,7 +93,7 @@ function addLoadTasks(saved?: Saved | null): void {
    */
   Loader.add('Shaders', 3, () => {
     renderer.compile(scene, camera);
-    lightFollow(Rig.update(0));
+    if (forHome) { lightFollow(Flyover.update(0)); clearCanopyWindow(); } else lightFollow(Rig.update(0));
     renderer.render(scene, camera);
   });
 }
@@ -107,26 +119,76 @@ function showFail(err: unknown): void {
   failNote.hidden = false;
 }
 
-/** Hot reload with a saved position: no intro, straight back into the world. */
-async function quickStart(): Promise<void> {
+/** Hot reload with a saved position: no intro and no Home Screen, straight back into the world. */
+async function quickStart(saved: Saved): Promise<void> {
   endIntro();
   try { await Loader.run(); } catch (err) { showFail(err); return; }
+  setGameMode(isGameMode(saved.mode) ? saved.mode : 'survival');
   Input.init(stage);
   wireResize();
-  startLoop();
+  startLoop('game');
 }
 
-/** Normal start: the full intro, with the world loading behind it from the first moment. */
+/**
+ * A mode was picked on the Home Screen: the cards lift away under white, the game's world is built
+ * under the white with the player in it, and the white fades away. Input only starts listening at the
+ * end, so the press that picked the mode can never move the player.
+ */
+async function enterGame(home: HomeScreen | null, mode: GameMode): Promise<void> {
+  setGameMode(mode);
+  try {
+    if (home) await home.leave();
+    setLoopState('paused');                // nothing is drawn while the world is swapped
+    Flyover.stop();
+    /*
+     * Survival and Creative play the fixed world, CFG.seed, as the game always has. To play the Home
+     * Screen's random world instead, delete the next two lines: World.build() then only adds the chunks
+     * around the player to the ones the flyover left behind.
+     */
+    setWorldSeed(CFG.seed);
+    World.reset();
+    await World.build(START_X, START_Z);
+    World.refill();
+    Player.place(START_X, START_Z);
+    Player.show(true);
+    Rig.snap();
+    setLoopState('game');
+  } catch (err) {
+    console.error('[Mavooli] Could not set up the game cleanly.', err);
+    setLoopState('game');
+  }
+  if (home) { try { await home.close(); } catch (err) { console.error(err); } }
+  Input.init(stage);
+}
+
+/** Under the intro's white: open the Home Screen and start its world drifting. If it cannot open, start the game. */
+function showHome(): HomeScreen | null {
+  startLoop('home');
+  try {
+    const home = openHome(homeEl);
+    void home.chosen.then(mode => enterGame(home, mode));
+    return home;
+  } catch (err) {
+    console.error('[Mavooli] The Home Screen failed to open; starting the game.', err);
+    homeEl.hidden = true;
+    void enterGame(null, 'survival');
+    return null;
+  }
+}
+
+/** Normal start: the full intro, with the Home Screen's world loading behind it from the first moment. */
 function coldStart(): void {
   let progress = 0;
+  let home: HomeScreen | null = null;
   const loading = Loader.run(f => { progress = f; });
   loading.then(wireResize, () => undefined);   // keep the canvas sized while the intro is still showing
   playIntro(splash, {
     loading: loading,
     progress: () => progress,
-    startGame: startLoop,
+    showHome: () => { home = showHome(); },
+    revealHome: () => { if (home) home.enter(); },
     fail: showFail,
-    done: () => { Input.init(stage); wireResize(); }   // only now, so the press that started the game cannot move the player
+    done: wireResize
   }).catch(err => console.error(err));
 }
 
@@ -138,14 +200,15 @@ let launched = false;
 function launch(saved?: Saved | null): void {
   if (launched) return;
   launched = true;
-  addLoadTasks(saved);
-  if (hasSaved(saved)) void quickStart(); else coldStart();
+  const quick = hasSaved(saved);
+  addLoadTasks(saved, !quick);
+  if (quick) void quickStart(saved as Saved); else coldStart();
 }
 
 function boot(): void {
   const hot = window.claude && window.claude.hot;
-  /* Before the player exists (early in the intro) there is nothing to keep, so the next load plays the intro. */
-  if (hot && hot.snapshot) hot.snapshot(() => (Player ? { x: Player.pos.x, z: Player.pos.z, zoom: Rig.want } : {}));
+  /* Until a game is being played (during the intro and on the Home Screen) there is nothing to keep, so the next load plays the intro. */
+  if (hot && hot.snapshot) hot.snapshot(() => (Player && Game.mode ? { x: Player.pos.x, z: Player.pos.z, zoom: Rig.want, mode: Game.mode } : {}));
   try {
     if (hot && hot.ready) hot.ready(launch); else launch((hot && hot.data) || {});
   } catch (err) {
