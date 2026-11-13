@@ -58,6 +58,8 @@ repository is renamed, or the site moves to a custom domain or a `<user>.github.
 ```
 index.html                 page shell: #stage (the canvas host), #fail (the no-WebGL note), #splash (the intro)
 hs.jpg, mimblumi.png       the hiyroscript and Mimblumi logos shown by the intro
+favicon.ico                the tab icon (the Mimblumi logo at 16, 32 and 48 px, its stroke thickened to stay legible)
+apple-touch-icon.png       the home-screen icon (the Mimblumi logo at 180 px)
 src/
 ├─ main.ts                 boot: the start-up work as loader tasks, hot-reload hook, intro or quick start, error → #fail
 ├─ style.css               every style, including the intro's
