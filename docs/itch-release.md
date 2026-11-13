@@ -13,8 +13,9 @@ repository, then rebuild.
 ```sh
 npm ci                         # once: Vite and TypeScript, the build's tools
 npm run build:itch             # dist/itch/ and dist/mavooli-itch.zip, validated, with a report
-npm run verify:itch            # served under a nested path, then played in a cross-origin iframe
+npm run verify:itch            # the same game as on GitHub Pages, then served under a nested path and played in a cross-origin iframe
 node tools/itch/validate.mjs   # validate an existing dist/ again
+node tools/itch/equivalence.mjs  # compare an existing dist/itch/ with the GitHub Pages build again
 node --test                    # the tests of the tools and of both builds
 ```
 
@@ -66,7 +67,8 @@ Pages build in `dist/` stays beside them. `npm run build` empties all of
 
 Both come from the same `index.html`, the same code and the same assets,
 with the same options (`cssMinify: false`, `chunkSizeWarningLimit: 700`).
-The mode changes only two things:
+The mode changes only two things, and `npm run verify:itch` holds the two
+builds to that, byte for byte ([below](#the-same-game-as-on-github-pages)):
 
 | | GitHub Pages (`vite build`) | itch.io (`vite build --mode itch`) |
 | --- | --- | --- |
@@ -140,19 +142,21 @@ message naming it, and no archive is made
 ([`tests/itch/validate.test.mjs`](../tests/itch/validate.test.mjs) plants
 each of them).
 
-## The check over HTTP and in a browser
+## The checks: the same game, over HTTP, in a browser
 
 `npm run verify:itch` ([`tools/itch/verify.mjs`](../tools/itch/verify.mjs))
-checks the built release the way itch.io serves it:
+checks the built release against the GitHub Pages build, then the way
+itch.io serves it:
 
 1. The release and its archive are valid (the validation above).
-2. **Over HTTP.** A tiny Node static server serves `dist/itch/` under a
+2. **The same game as on GitHub Pages** (below).
+3. **Over HTTP.** A tiny Node static server serves `dist/itch/` under a
    nested, unrelated path, `/html/16180339/`, like itch.io's, with nothing
    at its root. The page and every file it loads, requested by the URL a
    browser resolves, must answer 200 with the content type it is loaded as:
    the module script as JavaScript, the stylesheet as CSS, the images as
    images (`CONTENT_TYPES` in `release.mjs`).
-3. **In a browser.** A headless Chrome, Chromium or Edge the machine already
+4. **In a browser.** A headless Chrome, Chromium or Edge the machine already
    has (`CHROME_PATH`, or the usual places; GitHub's `ubuntu-latest` runners
    have Google Chrome) is driven over its DevTools pipe
    ([`tools/itch/browser.mjs`](../tools/itch/browser.mjs): nothing to
@@ -168,22 +172,54 @@ checks the built release the way itch.io serves it:
    - no console error, no uncaught exception, no failed request, nothing
      requested outside the nested path.
 
-   With no browser on the machine, step 3 is skipped with a note, except in
+   With no browser on the machine, step 4 is skipped with a note, except in
    CI (the `CI` variable set, as on GitHub), where that is a failure.
    `npm run verify:itch -- --no-browser` skips it on purpose.
 
-Alva's equivalence check (its bundle played against its modules) has no
-counterpart here: Mavooli is not re-bundled for itch.io. Both builds are
-Vite's, from the same code, and differ only in their URLs.
+### The same game as on GitHub Pages
+
+Alva re-bundles its modules for itch.io, so its equivalence check plays the
+bundle against the source, match by match. Mavooli is never re-bundled: both
+builds are one Vite compile of the same code. So its equivalence check
+([`tools/itch/equivalence.mjs`](../tools/itch/equivalence.mjs)) compares the
+release with the GitHub Pages build of the repository as it is (made in a
+temporary folder; `dist/` is not touched), byte for byte, with no browser
+and in about a second:
+
+- Every file has its counterpart in the other build: the same name, or the
+  same name under another content hash (`index-<hash>.js`).
+- A file under the same name in both is byte for byte the same: the images,
+  the icons, the stylesheet.
+- The script and the page, whose hashes differ, are the same once each URL
+  is written one way: Pages' `"/moo/assets/hs-<hash>.jpg"` and itch.io's
+  `new URL("hs-<hash>.jpg", import.meta.url).href` in the script,
+  `href="/moo/assets/…"` and `href="./assets/…"` in the page (and
+  `url(/moo/…)` and `url(…)` in a stylesheet) become one placeholder naming
+  the file the URL resolves to. Each URL counts only in its own kind of
+  file, so a script's `getDataURL(…)` is never taken for a stylesheet's
+  `url(…)`.
+
+Today that is 5 of the 7 files byte for byte the same, and the script and
+page the same but for 8 URLs. Anything else that differs fails, naming the
+file and the first character that differs, with a little of each build
+around it: code that branches on the build's mode (`import.meta.env.MODE`),
+an `.env.itch` file, a plugin for one mode, or a Vite upgrade that rewrites
+more than the URLs. The release is then not the game that GitHub Pages
+shows, and that is worth knowing before it goes to itch.io. If such a
+difference is ever wanted, the check has to be told about it, in
+`equivalence.mjs`.
 
 ## The tests
 
 `node --test` runs [`tests/itch/`](../tests/itch/): the ZIP writer and
 reader round-trip (and the system `unzip` agrees), the rule about other
 hosts, the validation on small releases with each mistake planted in turn,
+the equivalence check on small pairs of builds (the same but for their URLs,
+then with code, an image, a stylesheet, a URL's form or a file differing),
 and both real Vite builds (into temporary folders): the itch build's page
 has only relative URLs and passes the validation, the Pages build keeps
-`/moo/` and the validation refuses it for itch.io.
+`/moo/` and the validation refuses it for itch.io, and the two are the same
+game but for their URLs.
 
 ## Testing the release locally
 

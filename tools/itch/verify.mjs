@@ -1,16 +1,19 @@
-// Checks the built itch.io release the way itch.io serves it:
-// `npm run verify:itch` (after `npm run build:itch`). `-- --no-browser`
-// skips step 3.
+// Checks the built itch.io release against the GitHub Pages build, then the
+// way itch.io serves it: `npm run verify:itch` (after `npm run build:itch`).
+// `-- --no-browser` skips step 4.
 //
 // 1. The release and its archive are valid (validate.mjs).
-// 2. Over HTTP: dist/itch/ served by a tiny static server under a nested,
+// 2. The same game as on GitHub Pages (equivalence.mjs): the Pages build of
+//    the repository, made in a temporary folder, and the release differ in
+//    nothing but how their URLs are written, byte for byte.
+// 3. Over HTTP: dist/itch/ served by a tiny static server under a nested,
 //    unrelated path (/html/16180339/, like itch.io's
 //    https://html-classic.itch.zone/html/<upload>/), with nothing at the
 //    server's root. The page and every file it loads (validate.mjs:
 //    pageReferences), requested by the URL the browser would resolve, must
 //    answer 200 with the content type it is loaded as: a module script as
 //    JavaScript, a stylesheet as CSS, an image as an image.
-// 3. In a browser (browser.mjs: a headless Chrome the machine already has):
+// 4. In a browser (browser.mjs: a headless Chrome the machine already has):
 //    the game inside a cross-origin <iframe allow="fullscreen"> on a taller
 //    page of another site, as on itch.io. The intro must reach "Press to
 //    start" with its logos; a click must give the frame the keyboard and
@@ -19,7 +22,7 @@
 //    the page around it, nor must the mouse wheel; a click outside and back
 //    on the world must give the keys back to the game. No console error, no
 //    uncaught exception, no failed request, nothing requested outside the
-//    nested path. With no browser on the machine, step 3 is skipped with a
+//    nested path. With no browser on the machine, step 4 is skipped with a
 //    warning, except in CI (the CI variable set), where it fails.
 
 import { createServer } from 'node:http';
@@ -28,6 +31,7 @@ import { join, normalize, sep } from 'node:path';
 import { ROOT, GAME, OUT_DIR, contentTypeOf } from './release.mjs';
 import { listFiles, pageReferences, validateRelease } from './validate.mjs';
 import { findBrowser, launch } from './browser.mjs';
+import { compareWithPages } from './equivalence.mjs';
 
 const BASE = '/html/16180339/';
 const noBrowser = process.argv.includes('--no-browser');
@@ -103,7 +107,7 @@ function parentServer(frameUrl) {
   });
 }
 
-// ---- 2. Over HTTP --------------------------------------------------------------
+// ---- 3. Over HTTP --------------------------------------------------------------
 
 async function checkHttp(origin) {
   const files = listFiles(DIR);
@@ -131,7 +135,7 @@ async function checkHttp(origin) {
   return { checked, files: files.length };
 }
 
-// ---- 3. In a browser -----------------------------------------------------------
+// ---- 4. In a browser -----------------------------------------------------------
 
 const KEYS = {
   ArrowUp: { key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38 },
@@ -295,6 +299,13 @@ async function main() {
     return;
   }
   console.log('release         dist/itch/ and dist/mavooli-itch.zip valid (validate.mjs)');
+
+  const same = await compareWithPages();
+  for (const p of same.problems) fail(`equivalence: ${p}`);
+  const { files, same: identical, rewritten, urls } = same.stats;
+  if (!same.problems.length) {
+    console.log(`GitHub Pages    the same game: ${identical} of ${files} files byte for byte, ${rewritten} differing only in ${urls} URLs (equivalence.mjs)`);
+  }
 
   const log = [];
   const game = gameServer(log);

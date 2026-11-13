@@ -67,7 +67,7 @@ Other scripts:
 | `npm run preview`     | Serves the built `dist/` at http://localhost:4173/moo/                               |
 | `npm run typecheck`   | Type-checks only                                                                     |
 | `npm run build:itch`  | Builds, validates and zips the itch.io release: `dist/itch/` and `dist/mavooli-itch.zip` |
-| `npm run verify:itch` | Serves that release under a nested path and plays it in a cross-origin iframe        |
+| `npm run verify:itch` | Checks that release is the Pages build but for its URLs, then serves it under a nested path and plays it in a cross-origin iframe |
 | `npm test`            | The tests (`node --test`): the itch.io tools and both builds                          |
 
 ## Deploying
@@ -92,7 +92,7 @@ zipped with `index.html` at the root of the archive (7 files, under 1 MB):
 
 ```sh
 npm run build:itch     # dist/itch/ and dist/mavooli-itch.zip, validated; ends with OK
-npm run verify:itch    # served under a nested path, then played in a cross-origin iframe
+npm run verify:itch    # the same game as on GitHub Pages, then served under a nested path and played in a cross-origin iframe
 ```
 
 Every push to `main` also runs [`.github/workflows/itch-release.yml`](.github/workflows/itch-release.yml)
@@ -114,12 +114,13 @@ docs/itch-release.md       the itch.io release: the build, the validation, the c
 tools/itch/                the itch.io release's tools (Node, no dependencies of their own)
 ├─ build.mjs               npm run build:itch: type check, Vite's itch build, validation, the ZIP, the report
 ├─ validate.mjs            itch.io's limits, every URL relative and present, nothing extra or development-only
-├─ verify.mjs              npm run verify:itch: served under a nested path, played in a cross-origin iframe
+├─ verify.mjs              npm run verify:itch: equivalence, then served under a nested path, played in a cross-origin iframe
+├─ equivalence.mjs         the release against the GitHub Pages build: byte for byte the same but for their URLs
 ├─ browser.mjs             the headless Chrome verify.mjs drives over its DevTools pipe
 ├─ hosts.mjs               the rule about other hosts: nothing loaded from anywhere else
 ├─ zip.mjs                 the deterministic ZIP writer and reader
 └─ release.mjs             what they share: paths, limits, development-only files, content types
-tests/itch/                node --test: the tools, and both builds (Pages keeps /moo/, itch.io is relative)
+tests/itch/                node --test: the tools, and both builds (Pages keeps /moo/, itch.io is relative, the same game)
 vite.config.ts             two builds by mode: GitHub Pages (base /moo/, dist/) and itch.io (--mode itch: base ./, dist/itch/)
 index.html                 page shell: #stage (the canvas host), #fail (the no-WebGL note), #home (the Home Screen), #splash (the intro)
 hs.jpg, mavooli.png        the hiyroscript and Mavooli logos shown by the intro (mavooli.png is still the old art: see the TODO above)
