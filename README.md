@@ -61,11 +61,14 @@ npm run dev        # dev server with hot reload, at http://localhost:5173/moo/
 
 Other scripts:
 
-| Command             | What it does                                                    |
-| ------------------- | --------------------------------------------------------------- |
-| `npm run build`     | Type-checks (`tsc --noEmit`), then bundles the site into `dist/` |
-| `npm run preview`   | Serves the built `dist/` at http://localhost:4173/moo/          |
-| `npm run typecheck` | Type-checks only                                                |
+| Command               | What it does                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `npm run build`       | Type-checks (`tsc --noEmit`), then bundles the site into `dist/`                     |
+| `npm run preview`     | Serves the built `dist/` at http://localhost:4173/moo/                               |
+| `npm run typecheck`   | Type-checks only                                                                     |
+| `npm run build:itch`  | Builds, validates and zips the itch.io release: `dist/itch/` and `dist/mavooli-itch.zip` |
+| `npm run verify:itch` | Serves that release under a nested path and plays it in a cross-origin iframe        |
+| `npm test`            | The tests (`node --test`): the itch.io tools and both builds                          |
 
 ## Deploying
 
@@ -82,9 +85,42 @@ The game is called Mavooli, but the repository is **moo**, so GitHub Pages serve
 site is built for that sub-path (`base` in [`vite.config.ts`](vite.config.ts)). If the repository is
 renamed, or the site moves to a custom domain or a `<user>.github.io` repository, change `base` to match.
 
+## itch.io
+
+The same game, built with every URL relative so it runs inside itch.io's `<iframe>` from any path, and
+zipped with `index.html` at the root of the archive (7 files, under 1 MB):
+
+```sh
+npm run build:itch     # dist/itch/ and dist/mavooli-itch.zip, validated; ends with OK
+npm run verify:itch    # served under a nested path, then played in a cross-origin iframe
+```
+
+Every push to `main` also runs [`.github/workflows/itch-release.yml`](.github/workflows/itch-release.yml)
+("itch.io release"), beside the GitHub Pages deployment: the tests, the build, the check, and then it keeps
+`mavooli-itch.zip` on the run's page (**Actions** → the run → **Artifacts**; unzip GitHub's wrapper once).
+Upload it to itch.io as an **HTML** project and tick **This file will be played in the browser**. With the
+secret `BUTLER_API_KEY` and the variable `ITCH_PROJECT` (for example `hiyroscript/mavooli`) set, the
+workflow also pushes it to itch.io itself with butler; without them it uploads nothing. The build, the
+validation, the embed options to choose on itch.io and what differs inside its page are in
+[the itch.io release](docs/itch-release.md).
+
 ## How the code is organised
 
 ```
+.github/workflows/
+├─ deploy.yml              GitHub Pages: builds dist/ and publishes it, on every push to main
+└─ itch-release.yml        itch.io: tests, builds, validates and plays the release, keeps the ZIP; optional butler push
+docs/itch-release.md       the itch.io release: the build, the validation, the checks, publishing on itch.io
+tools/itch/                the itch.io release's tools (Node, no dependencies of their own)
+├─ build.mjs               npm run build:itch: type check, Vite's itch build, validation, the ZIP, the report
+├─ validate.mjs            itch.io's limits, every URL relative and present, nothing extra or development-only
+├─ verify.mjs              npm run verify:itch: served under a nested path, played in a cross-origin iframe
+├─ browser.mjs             the headless Chrome verify.mjs drives over its DevTools pipe
+├─ hosts.mjs               the rule about other hosts: nothing loaded from anywhere else
+├─ zip.mjs                 the deterministic ZIP writer and reader
+└─ release.mjs             what they share: paths, limits, development-only files, content types
+tests/itch/                node --test: the tools, and both builds (Pages keeps /moo/, itch.io is relative)
+vite.config.ts             two builds by mode: GitHub Pages (base /moo/, dist/) and itch.io (--mode itch: base ./, dist/itch/)
 index.html                 page shell: #stage (the canvas host), #fail (the no-WebGL note), #home (the Home Screen), #splash (the intro)
 hs.jpg, mavooli.png        the hiyroscript and Mavooli logos shown by the intro (mavooli.png is still the old art: see the TODO above)
 favicon.ico                the tab icon (old art at 16, 32 and 48 px, its stroke thickened to stay legible; to be replaced)
@@ -120,7 +156,9 @@ src/
 │  └─ pools.ts             one InstancedMesh per asset variant
 ├─ player/player.ts        the character: model, movement, procedural walk/run animation
 ├─ camera/rig.ts           camera follow, zoom, resize and portrait field of view
-├─ input/input.ts          drag joystick, pinch, wheel, keyboard
+├─ input/
+│  ├─ input.ts             drag joystick, pinch, wheel, keyboard
+│  └─ embed.ts             inside another page's frame (itch.io): a press takes the keyboard focus, keys never scroll the page
 ├─ perf.ts                 drops the render resolution on slow devices
 └─ loop.ts                 the per-frame update, in one of two states: 'home' (the flyover) or 'game' (the player)
 ```
@@ -146,6 +184,12 @@ src/
   (`outputEncoding`, `sRGBEncoding`, `convertSRGBToLinear`, `updateRange`), changed the default lighting
   units, and rewrote the shader chunks that `render/shaders.ts` patches. Upgrading changes how the world
   looks and needs its own careful port.
+- **Everything the game loads comes from its own files, named literally.** Import an asset
+  (`import url from './x.png'`) or name it in `index.html` (its `/…` paths are fine: Vite rewrites them);
+  Vite then emits it under the right `base` for both builds. In the code, never build a path at run time,
+  write one starting with `/` or `/moo/`, or load anything from another host: the itch.io build's
+  validation fails on each (docs/itch-release.md). Nothing is saved yet; anything saved later goes in
+  `try`/`catch`, since itch.io's frame may block storage.
 - **Set-up order matters.** `main.ts` creates the renderer, scene, lights, materials, pools and player in
   a fixed order through explicit init functions, never as a side effect of importing a module. three.js
   breaks ties in draw order by creation order, so this keeps the rendered image the same.
