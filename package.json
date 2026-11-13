@@ -1,0 +1,21 @@
+{
+  "name": "mimblumi",
+  "private": true,
+  "version": "1.0.0",
+  "description": "An infinite, procedurally generated low-poly 3D world (three.js r128).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "three": "0.128.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.128.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}
